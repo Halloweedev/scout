@@ -16,6 +16,9 @@ import {
 } from "./lib/fs";
 import type { ClipboardState, DirectoryListing, ExplorerTab, FsEntry, SpecialDirectories } from "./types";
 
+const WORKSPACES_KEY = "scout.workspaces.v1";
+const LINKED_PANES_KEY = "scout.linked-panes.v1";
+
 interface ContextMenuState {
   x: number;
   y: number;
@@ -47,9 +50,33 @@ interface LoadPaneOptions {
   historyIndex?: number;
   resetHistory?: boolean;
   syncTab?: boolean;
+  silent?: boolean;
+}
+
+interface SavedWorkspace {
+  id: string;
+  name: string;
+  panePaths: string[];
+  activePaneIndex: number;
+  showHidden: boolean;
+  linkedPanes: boolean;
+  updatedAt: number;
 }
 
 const makeId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+
+function readWorkspaces(): SavedWorkspace[] {
+  try {
+    const raw = localStorage.getItem(WORKSPACES_KEY);
+    if (!raw) return [];
+    const value = JSON.parse(raw) as SavedWorkspace[];
+    return Array.isArray(value)
+      ? value.filter((workspace) => !!workspace?.id && Array.isArray(workspace.panePaths) && workspace.panePaths.length > 0)
+      : [];
+  } catch {
+    return [];
+  }
+}
 
 function formatBytes(value: number | null) {
   if (value === null) return "—";
@@ -75,6 +102,11 @@ function formatModified(value: number | null) {
   }).format(new Date(value));
 }
 
+function joinChildPath(base: string, childName: string) {
+  const separator = base.includes("\\") ? "\\" : "/";
+  return base.endsWith("/") || base.endsWith("\\") ? `${base}${childName}` : `${base}${separator}${childName}`;
+}
+
 function paneFromListing(listing: DirectoryListing): PaneState {
   return {
     id: makeId(),
@@ -97,6 +129,8 @@ export default function App() {
   const [panes, setPanes] = createSignal<PaneState[]>([]);
   const [activePaneId, setActivePaneId] = createSignal("");
   const [showHidden, setShowHidden] = createSignal(false);
+  const [linkedPanes, setLinkedPanes] = createSignal(localStorage.getItem(LINKED_PANES_KEY) === "1");
+  const [workspaces, setWorkspaces] = createSignal<SavedWorkspace[]>(readWorkspaces());
   const [clipboard, setClipboard] = createSignal<ClipboardState | null>(null);
   const [renamePath, setRenamePath] = createSignal<string | null>(null);
   const [renamePaneId, setRenamePaneId] = createSignal<string | null>(null);
@@ -124,6 +158,11 @@ export default function App() {
     if (dirs.downloads) items.push({ label: "Downloads", path: dirs.downloads, icon: "download" });
     return items;
   });
+
+  function persistWorkspaces(next: SavedWorkspace[]) {
+    setWorkspaces(next);
+    localStorage.setItem(WORKSPACES_KEY, JSON.stringify(next));
+  }
 
   function paneById(id: string) {
     return panes().find((pane) => pane.id === id) ?? null;
@@ -157,7 +196,7 @@ export default function App() {
     const current = paneById(id);
     if (!current) return null;
 
-    updatePane(id, (pane) => ({ ...pane, loading: true, error: null }));
+    updatePane(id, (pane) => ({ ...pane, loading: true, error: options.silent ? pane.error : null }));
     try {
       const listing = await listDirectory(path, showHidden());
       const pushHistory = options.pushHistory ?? true;
@@ -195,7 +234,7 @@ export default function App() {
       }
       return nextPane;
     } catch (reason) {
-      updatePane(id, (pane) => ({ ...pane, loading: false, error: String(reason) }));
+      updatePane(id, (pane) => ({ ...pane, loading: false, error: options.silent ? pane.error : String(reason) }));
       return null;
     }
   }
@@ -203,6 +242,37 @@ export default function App() {
   async function navigate(path: string) {
     const id = activePaneId();
     if (id) await loadPane(id, path);
+  }
+
+  async function navigateChild(paneId: string, entry: FsEntry) {
+    if (!linkedPanes() || panes().length <= 1) {
+      await loadPane(paneId, entry.path);
+      return;
+    }
+
+    const snapshot = panes();
+    await Promise.all(snapshot.map(async (pane) => {
+      const target = pane.id === paneId ? entry.path : joinChildPath(pane.path, entry.name);
+      await loadPane(pane.id, target, { silent: pane.id !== paneId, syncTab: pane.id === paneId });
+    }));
+    focusPane(paneId);
+  }
+
+  async function goUp() {
+    const pane = activePane();
+    if (!pane?.listing?.parentPath) return;
+    if (!linkedPanes() || panes().length <= 1) {
+      await loadPane(pane.id, pane.listing.parentPath);
+      return;
+    }
+
+    const snapshot = panes();
+    await Promise.all(snapshot.map(async (candidate) => {
+      const parent = candidate.listing?.parentPath;
+      if (!parent) return;
+      await loadPane(candidate.id, parent, { silent: candidate.id !== pane.id, syncTab: candidate.id === pane.id });
+    }));
+    focusPane(pane.id);
   }
 
   async function reloadPane(id: string) {
@@ -226,10 +296,27 @@ export default function App() {
   async function goHistory(delta: number) {
     const pane = activePane();
     if (!pane) return;
-    const nextIndex = pane.historyIndex + delta;
-    const path = pane.history[nextIndex];
-    if (!path) return;
-    await loadPane(pane.id, path, { pushHistory: false, historyIndex: nextIndex });
+
+    if (!linkedPanes() || panes().length <= 1) {
+      const nextIndex = pane.historyIndex + delta;
+      const path = pane.history[nextIndex];
+      if (path) await loadPane(pane.id, path, { pushHistory: false, historyIndex: nextIndex });
+      return;
+    }
+
+    const snapshot = panes();
+    await Promise.all(snapshot.map(async (candidate) => {
+      const nextIndex = candidate.historyIndex + delta;
+      const path = candidate.history[nextIndex];
+      if (!path) return;
+      await loadPane(candidate.id, path, {
+        pushHistory: false,
+        historyIndex: nextIndex,
+        silent: candidate.id !== pane.id,
+        syncTab: candidate.id === pane.id,
+      });
+    }));
+    focusPane(pane.id);
   }
 
   async function switchTab(id: string) {
@@ -299,6 +386,57 @@ export default function App() {
     }
   }
 
+  function toggleLinkedPanes() {
+    const next = !linkedPanes();
+    setLinkedPanes(next);
+    localStorage.setItem(LINKED_PANES_KEY, next ? "1" : "0");
+  }
+
+  function saveWorkspace() {
+    const snapshot = panes();
+    if (!snapshot.length) return;
+    const activeIndex = Math.max(0, snapshot.findIndex((pane) => pane.id === activePaneId()));
+    const workspace: SavedWorkspace = {
+      id: makeId(),
+      name: `Workspace ${workspaces().length + 1}`,
+      panePaths: snapshot.map((pane) => pane.path),
+      activePaneIndex: activeIndex,
+      showHidden: showHidden(),
+      linkedPanes: linkedPanes(),
+      updatedAt: Date.now(),
+    };
+    persistWorkspaces([workspace, ...workspaces()].slice(0, 20));
+  }
+
+  function deleteWorkspace(id: string) {
+    persistWorkspaces(workspaces().filter((workspace) => workspace.id !== id));
+  }
+
+  async function restoreWorkspace(workspace: SavedWorkspace) {
+    const paths = workspace.panePaths.slice(0, 4);
+    if (!paths.length) return;
+    const listings = await Promise.all(paths.map(async (path) => {
+      try {
+        return await listDirectory(path, workspace.showHidden);
+      } catch {
+        return null;
+      }
+    }));
+    const restored = listings.filter((listing): listing is DirectoryListing => !!listing).map(paneFromListing);
+    if (!restored.length) return;
+
+    const activeIndex = Math.min(Math.max(workspace.activePaneIndex, 0), restored.length - 1);
+    const focused = restored[activeIndex];
+    setShowHidden(workspace.showHidden);
+    setLinkedPanes(workspace.linkedPanes);
+    localStorage.setItem(LINKED_PANES_KEY, workspace.linkedPanes ? "1" : "0");
+    setPanes(restored);
+    setActivePaneId(focused.id);
+    setActiveListing(focused.listing);
+    syncTabToPane(focused);
+    await watchDirectory(focused.path);
+  }
+
   function selectEntry(event: MouseEvent, paneId: string, entry: FsEntry, index: number) {
     focusPane(paneId);
     const pane = paneById(paneId);
@@ -310,10 +448,7 @@ export default function App() {
     if (event.shiftKey && anchor !== null) {
       const from = Math.min(anchor, index);
       const to = Math.max(anchor, index);
-      updatePane(paneId, (current) => ({
-        ...current,
-        selected: entries.slice(from, to + 1).map((item) => item.path),
-      }));
+      updatePane(paneId, (current) => ({ ...current, selected: entries.slice(from, to + 1).map((item) => item.path) }));
       return;
     }
 
@@ -333,7 +468,7 @@ export default function App() {
 
   async function activateEntry(paneId: string, entry: FsEntry) {
     focusPane(paneId);
-    if (entry.kind === "directory") await loadPane(paneId, entry.path);
+    if (entry.kind === "directory") await navigateChild(paneId, entry);
     else await openEntry(entry.path);
   }
 
@@ -534,6 +669,24 @@ export default function App() {
             </button>
           )}</For>
         </nav>
+
+        <div class="sidebar-section-heading">
+          <span class="sidebar-section-label">Workspaces</span>
+          <button class="sidebar-section-action" onClick={saveWorkspace} aria-label="Save workspace" title="Save current workspace"><Icon name="plus" size={12} /></button>
+        </div>
+        <nav class="sidebar-nav workspace-list">
+          <For each={workspaces()}>{(workspace) => (
+            <div class="workspace-row">
+              <button class="sidebar-item workspace-open" onClick={() => void restoreWorkspace(workspace)} title={workspace.panePaths.join("\n")}>
+                <Icon name="split" size={14} />
+                <span>{workspace.name}</span>
+                <span class="workspace-count">{workspace.panePaths.length}</span>
+              </button>
+              <button class="workspace-delete" onClick={() => deleteWorkspace(workspace.id)} aria-label={`Delete ${workspace.name}`}><Icon name="close" size={11} /></button>
+            </div>
+          )}</For>
+        </nav>
+
         <div class="sidebar-spacer" />
         <div class="sidebar-footer">GPLv3 · local-first</div>
       </aside>
@@ -543,10 +696,11 @@ export default function App() {
           <div class="toolbar-group">
             <button class="icon-button" disabled={!canGoBack()} onClick={() => goHistory(-1)} aria-label="Back"><Icon name="arrow-left" /></button>
             <button class="icon-button" disabled={!canGoForward()} onClick={() => goHistory(1)} aria-label="Forward"><Icon name="arrow-right" /></button>
-            <button class="icon-button" disabled={!activePane()?.listing?.parentPath} onClick={() => { const parent = activePane()?.listing?.parentPath; if (parent) void navigate(parent); }} aria-label="Up"><Icon name="arrow-up" /></button>
+            <button class="icon-button" disabled={!activePane()?.listing?.parentPath} onClick={goUp} aria-label="Up"><Icon name="arrow-up" /></button>
           </div>
           <div class="path-display" title={activePane()?.path ?? ""}>{activePane()?.path ?? "Loading…"}</div>
           <div class="toolbar-group toolbar-actions">
+            <button class="icon-button" disabled={panes().length <= 1} classList={{ active: linkedPanes() }} onClick={toggleLinkedPanes} aria-label="Link pane navigation" title="Link pane navigation"><Icon name="link" /></button>
             <button class="icon-button" disabled={panes().length >= 4} onClick={addPane} aria-label="Add pane" title="Add pane"><Icon name="split" /></button>
             <button class="icon-button" disabled={panes().length <= 1} onClick={() => removePane()} aria-label="Close active pane" title="Close active pane"><Icon name="close" /></button>
             <button class="icon-button" classList={{ active: showHidden() }} onClick={toggleHiddenFiles} aria-label="Show hidden files"><Icon name="eye" /></button>
@@ -566,12 +720,7 @@ export default function App() {
 
         <div class={`pane-grid panes-${panes().length}`}>
           <For each={panes()}>{(pane) => (
-            <section
-              class="explorer-pane"
-              classList={{ active: pane.id === activePaneId() }}
-              data-pane-path={pane.path}
-              onPointerDown={() => focusPane(pane.id)}
-            >
+            <section class="explorer-pane" classList={{ active: pane.id === activePaneId() }} data-pane-path={pane.path} onPointerDown={() => focusPane(pane.id)}>
               <div class="pane-chrome">
                 <span class="pane-path" title={pane.path}>{pane.path}</span>
                 <Show when={panes().length > 1}>
@@ -641,7 +790,7 @@ export default function App() {
         <footer class="statusbar">
           <span>{activeEntries().length} {activeEntries().length === 1 ? "item" : "items"}</span>
           <Show when={activeSelected().length}><span>{activeSelected().length} selected</span></Show>
-          <Show when={panes().length > 1}><span>{panes().length} panes</span></Show>
+          <Show when={panes().length > 1}><span>{panes().length} panes{linkedPanes() ? " · linked" : ""}</span></Show>
           <Show when={clipboard()}>{(payload) => <span>{payload().mode === "copy" ? "Copied" : "Cut"} {payload().paths.length}</span>}</Show>
           <Show when={activePane()?.error}>{(message) => <span class="status-error" title={message()}>{message()}</span>}</Show>
         </footer>

@@ -49,6 +49,26 @@ button { color: inherit; }
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+.sidebar-section-heading {
+  display: flex;
+  align-items: center;
+  min-height: 31px;
+  margin-top: 12px;
+}
+.sidebar-section-heading .sidebar-section-label { margin: 0 8px; flex: 1; }
+.sidebar-section-action {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #5f5f65;
+}
+.sidebar-section-action:hover { background: #1b1b1d; color: #d7d7da; }
 
 .sidebar-nav { display: grid; gap: 2px; }
 .sidebar-item {
@@ -70,6 +90,28 @@ button { color: inherit; }
 .sidebar-item svg { flex: 0 0 auto; }
 .sidebar-spacer { flex: 1; }
 .sidebar-footer { padding: 8px; color: #55555a; font-size: 10px; }
+
+.workspace-list { gap: 1px; }
+.workspace-row { position: relative; min-width: 0; }
+.workspace-open { padding-right: 30px; }
+.workspace-open > span:not(.workspace-count) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-count { margin-left: auto; color: #55555a; font-size: 9px; font-variant-numeric: tabular-nums; }
+.workspace-delete {
+  position: absolute;
+  right: 5px;
+  top: 6px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: transparent;
+}
+.workspace-row:hover .workspace-delete { color: #5f5f64; }
+.workspace-delete:hover { background: #28282b; color: #d49a9a !important; }
 
 .workspace {
   display: grid;

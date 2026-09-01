@@ -14,6 +14,7 @@ export type IconName =
   | "file"
   | "folder"
   | "home"
+  | "link"
   | "more"
   | "new-folder"
   | "plus"
@@ -41,6 +42,7 @@ const iconContent: Record<IconName, JSX.Element> = {
   file: <><path d="M7 3h7l4 4v14H7z" /><path d="M14 3v5h5" /></>,
   folder: <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" />,
   home: <><path d="m3 11 9-7 9 7" /><path d="M5 10v10h14V10M9 20v-6h6v6" /></>,
+  link: <><path d="M10.5 13.5 13.5 10.5" /><path d="M8.2 15.8 6.4 17.6a3.4 3.4 0 0 1-4.8-4.8l3.6-3.6A3.4 3.4 0 0 1 10 9" /><path d="m14 15 4.8-4.8a3.4 3.4 0 0 0-4.8-4.8l-1.8 1.8" /></>,
   more: <><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></>,
   "new-folder": <><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" /><path d="M12 10v6m-3-3h6" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
