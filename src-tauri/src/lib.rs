@@ -2,6 +2,7 @@ mod archive;
 mod disk;
 mod duplicates;
 mod fs;
+mod images;
 mod preview;
 mod search;
 mod utilities;
@@ -24,6 +25,7 @@ pub fn run() {
             fs::trash_entries,
             fs::create_folder,
             fs::open_entry,
+            images::transform_images,
             preview::preview_entry,
             preview::thumbnail_entry,
             search::index_status,

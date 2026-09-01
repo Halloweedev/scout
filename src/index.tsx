@@ -4,6 +4,7 @@ import { installDiskMap } from "./lib/disk-map";
 import { installDuplicateFinder } from "./lib/duplicates";
 import { installGlobalSearch } from "./lib/global-search";
 import { installImageThumbnails } from "./lib/thumbnails";
+import { installImageTools } from "./lib/image-tools";
 import { installInternalPointerDrag } from "./lib/internal-drag";
 import { installNativeFileDrop } from "./lib/native-drop";
 import { installQuickLook } from "./lib/quick-look";
@@ -18,6 +19,7 @@ import "./global-search.css";
 import "./utilities.css";
 import "./duplicates.css";
 import "./disk-map.css";
+import "./image-tools.css";
 
 const root = document.getElementById("root");
 
@@ -33,6 +35,7 @@ const globalSearchCleanup = installGlobalSearch();
 const utilitiesCleanup = installUtilities();
 const duplicateFinderCleanup = installDuplicateFinder();
 const diskMapCleanup = installDiskMap();
+const imageToolsCleanup = installImageTools();
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
@@ -43,6 +46,7 @@ if (import.meta.hot) {
     utilitiesCleanup();
     duplicateFinderCleanup();
     diskMapCleanup();
+    imageToolsCleanup();
     void nativeDropCleanup.then((cleanup) => cleanup());
   });
 }
