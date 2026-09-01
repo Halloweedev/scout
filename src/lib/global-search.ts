@@ -1,10 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { openEntry } from "./fs";
 
+const INDEX_VERSION = 2;
+
 interface IndexStatus {
   count: number;
   root: string | null;
   lastIndexedMs: number | null;
+  version: number;
 }
 
 interface SearchResult {
@@ -14,6 +17,7 @@ interface SearchResult {
   kind: string;
   extension: string | null;
   score: number;
+  matchContext: string | null;
 }
 
 const indexStatus = () => invoke<IndexStatus>("index_status");
@@ -44,9 +48,9 @@ function setStatus(value: string) {
 async function ensureIndex() {
   if (indexingPromise) return indexingPromise;
   const status = await indexStatus();
-  if (status.count > 0) return status;
+  if (status.count > 0 && status.version >= INDEX_VERSION) return status;
 
-  setStatus("Building local index…");
+  setStatus(status.count > 0 ? "Upgrading local index…" : "Building local index…");
   indexingPromise = rebuildIndex().finally(() => {
     indexingPromise = null;
   });
@@ -66,7 +70,7 @@ function renderResults() {
   resultsNode.replaceChildren();
   if (results.length === 0) {
     const empty = element("div", "global-search-empty");
-    empty.textContent = input?.value.trim() ? "No matching files." : "Type to search your files.";
+    empty.textContent = input?.value.trim() ? "No matching files or contents." : "Type to search your files.";
     resultsNode.append(empty);
     return;
   }
@@ -80,12 +84,16 @@ function renderResults() {
     const text = element("span", "global-search-result-text");
     const name = element("span", "global-search-result-name");
     name.textContent = result.name;
-    const path = element("span", "global-search-result-path");
-    path.textContent = result.parent;
-    text.append(name, path);
+    const context = element("span", result.matchContext ? "global-search-result-path content-match" : "global-search-result-path");
+    context.textContent = result.matchContext ?? result.parent;
+    text.append(name, context);
 
     const type = element("span", "global-search-result-type");
-    type.textContent = result.kind === "directory" ? "Folder" : (result.extension?.toUpperCase() ?? "File");
+    type.textContent = result.matchContext
+      ? "Content"
+      : result.kind === "directory"
+        ? "Folder"
+        : (result.extension?.toUpperCase() ?? "File");
 
     row.append(iconFor(result), text, type);
     row.addEventListener("pointermove", () => {
@@ -106,7 +114,7 @@ async function runSearch(query = input?.value ?? "") {
   try {
     const status = await ensureIndex();
     if (token !== searchToken || !overlay) return;
-    setStatus(`${status.count.toLocaleString()} indexed`);
+    setStatus(`${status.count.toLocaleString()} indexed · names, paths & contents`);
     const next = await searchIndex(query, 40);
     if (token !== searchToken || !overlay) return;
     results = next;
@@ -172,7 +180,7 @@ function openPalette() {
   mark.setAttribute("aria-hidden", "true");
   input = element("input", "global-search-input");
   input.type = "search";
-  input.placeholder = "Search files and folders…";
+  input.placeholder = "Search names, paths and file contents…";
   input.autocomplete = "off";
   input.spellcheck = false;
   input.addEventListener("input", scheduleSearch);
