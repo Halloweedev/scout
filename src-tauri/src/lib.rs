@@ -5,6 +5,7 @@ mod duplicates;
 mod fs;
 mod history;
 mod images;
+mod pdf;
 mod preview;
 mod search;
 mod similar;
@@ -38,6 +39,15 @@ pub fn run() {
             fs::redo_last_operation,
             history::operation_history,
             images::transform_images,
+            pdf::pdf_info,
+            pdf::extract_pdf_pages,
+            pdf::split_pdf_pages,
+            pdf::delete_pdf_pages,
+            pdf::reorder_pdf_pages,
+            pdf::rotate_pdf_pages,
+            pdf::compress_pdf,
+            pdf::strip_pdf_metadata,
+            pdf::merge_pdfs,
             preview::preview_entry,
             preview::thumbnail_entry,
             search::index_status,
