@@ -15,6 +15,22 @@ The product direction is simple: **Finder familiarity + Arc-level refinement + C
 - No SaaS dashboard patterns, decorative glass containers, blue accents, or unusual navigation metaphors.
 - Free and open source for everyone, supported by voluntary donations.
 
+## Current implementation
+
+The repository now contains a functional M1 filesystem shell rather than a static mockup:
+
+- Native Rust directory listing and platform special-directory discovery.
+- Back/forward/up navigation with per-tab history.
+- Multiple tabs.
+- Keyboard and range selection.
+- Copy, cut, paste, duplicate, inline rename, native trash, and folder creation.
+- Internal drag/drop moves between folders.
+- Hidden-file toggle.
+- Custom contextual menu.
+- Files open through the operating system's configured default application.
+
+The next M1 work is filesystem watching, external OS drag/drop hardening, and the undo/redo operation foundation.
+
 ## Stack
 
 - Rust
@@ -44,9 +60,11 @@ Type-check and build the frontend:
 pnpm build
 ```
 
-## Status
+Rust check:
 
-Scout is being rebuilt from the repository up. The first implementation target is M1: a dependable daily-driver filesystem with real directory listing, navigation, file operations, selection, context menus, tabs, hidden files, drag/drop, and filesystem watching.
+```bash
+cargo check --manifest-path src-tauri/Cargo.toml
+```
 
 See [ROADMAP.md](ROADMAP.md) for the milestone plan.
 

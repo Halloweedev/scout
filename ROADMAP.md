@@ -2,31 +2,62 @@
 
 ## M1 — Daily-driver filesystem
 
-- Real directory listing
-- Back/forward navigation
-- Copy/cut/paste
-- Duplicate
-- Rename
-- Native trash
-- Filesystem watcher
-- Hidden files
-- Drag/drop
-- Proper keyboard selection
-- Context menus
-- Tabs
+- [x] Real directory listing
+- [x] Back/forward navigation
+- [x] Copy/cut/paste
+- [x] Duplicate
+- [x] Rename
+- [x] Native trash
+- [ ] Filesystem watcher
+- [x] Hidden files
+- [x] Internal drag/drop between folders
+- [x] Proper keyboard selection
+- [x] Context menus
+- [x] Tabs
+- [x] Open files with the system default application
+- [x] Create folders
+- [ ] External OS drag/drop hardening
+- [ ] Undo/redo foundation for destructive operations
 
 ## M2 — Previews
 
-Image thumbnails and EXIF, PDF, text/code, Markdown, audio/video, folder-content Quick Look, and archive Quick Look.
+- [ ] Image thumbnails and EXIF
+- [ ] PDF
+- [ ] Text/code
+- [ ] Markdown
+- [ ] Audio/video
+- [ ] Folder-content Quick Look
+- [ ] Archive Quick Look
 
 ## M3 — Power navigation
 
-Persistent fuzzy index, usage/path ranking, content search, saved searches, 2–4 panes, synced panes, and workspaces.
+- [ ] Persistent fuzzy index
+- [ ] Usage/path ranking
+- [ ] Content search
+- [ ] Saved searches
+- [ ] 2–4 panes
+- [ ] Synced panes
+- [ ] Workspaces
 
 ## M4 — Utilities
 
-FFmpeg conversion, image conversion/resize/optimization, document conversion, PDF tools, archives, batch rename, duplicate detection, similar-photo search, disk/folder treemaps, checksums, and the Portal shelf.
+- [ ] FFmpeg conversion
+- [ ] Image conversion/resize/optimization
+- [ ] Document conversion
+- [ ] PDF tools
+- [ ] Archives
+- [ ] Batch rename
+- [ ] Duplicate detection
+- [ ] Similar-photo search
+- [ ] Disk/folder treemaps
+- [ ] Checksums
+- [ ] Portal shelf
 
 ## M5 — Automation
 
-Hazel-style rules, file triggers, move/copy/rename/tag/convert/optimize/archive/script actions, a shared operation queue, cancellation, and undo/redo history.
+- [ ] Hazel-style rules
+- [ ] File triggers
+- [ ] Move/copy/rename/tag/convert/optimize/archive/script actions
+- [ ] Shared operation queue
+- [ ] Cancellation
+- [ ] Undo/redo history
