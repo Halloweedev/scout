@@ -13,6 +13,7 @@ const DIRECTORY_PREVIEW_LIMIT: usize = 40;
 const EXIF_PREVIEW_LIMIT: usize = 24;
 const IMAGE_PREVIEW_WIDTH: u32 = 1400;
 const IMAGE_PREVIEW_HEIGHT: u32 = 1000;
+const THUMBNAIL_SIZE: u32 = 96;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -185,18 +186,22 @@ fn read_exif(path: &Path) -> Vec<PreviewMetadataItem> {
         .collect()
 }
 
+fn encode_png(source: image::DynamicImage) -> Result<String, String> {
+    let mut buffer = Cursor::new(Vec::new());
+    source
+        .write_to(&mut buffer, ImageFormat::Png)
+        .map_err(|error| format!("Could not encode image preview: {error}"))?;
+    Ok(format!("data:image/png;base64,{}", STANDARD.encode(buffer.into_inner())))
+}
+
 fn preview_image(path: &Path, metadata: &fs::Metadata) -> Result<PreviewData, String> {
     let source = image::open(path).map_err(|error| format!("Could not decode image: {error}"))?;
     let width = source.width();
     let height = source.height();
     let rendered = source.thumbnail(IMAGE_PREVIEW_WIDTH, IMAGE_PREVIEW_HEIGHT);
-    let mut buffer = Cursor::new(Vec::new());
-    rendered
-        .write_to(&mut buffer, ImageFormat::Png)
-        .map_err(|error| format!("Could not encode image preview: {error}"))?;
 
     let mut preview = base_preview(path, metadata, "image");
-    preview.data_url = Some(format!("data:image/png;base64,{}", STANDARD.encode(buffer.into_inner())));
+    preview.data_url = Some(encode_png(rendered)?);
     preview.width = Some(width);
     preview.height = Some(height);
     preview.metadata = read_exif(path);
@@ -261,6 +266,23 @@ fn preview_directory(path: &Path, metadata: &fs::Metadata) -> Result<PreviewData
     preview.children = children;
     preview.truncated = truncated;
     Ok(preview)
+}
+
+#[tauri::command]
+pub fn thumbnail_entry(path: String) -> Result<Option<String>, String> {
+    let path = PathBuf::from(path);
+    if !is_image_extension(extension(&path).as_deref()) {
+        return Ok(None);
+    }
+
+    let metadata = fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
+    if !metadata.is_file() {
+        return Ok(None);
+    }
+
+    let source = image::open(&path).map_err(|error| format!("Could not decode image: {error}"))?;
+    let thumbnail = source.thumbnail(THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+    encode_png(thumbnail).map(Some)
 }
 
 #[tauri::command]

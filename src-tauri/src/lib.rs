@@ -17,6 +17,7 @@ pub fn run() {
             fs::create_folder,
             fs::open_entry,
             preview::preview_entry,
+            preview::thumbnail_entry,
             watch::watch_directory,
         ])
         .run(tauri::generate_context!())
