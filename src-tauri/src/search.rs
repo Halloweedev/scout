@@ -1,3 +1,4 @@
+use crate::queue::{self, JobContext};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use std::{
@@ -6,6 +7,7 @@ use std::{
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
+use tauri::AppHandle;
 use walkdir::{DirEntry, WalkDir};
 
 const INDEX_VERSION: u32 = 2;
@@ -247,7 +249,7 @@ fn read_content_sample(path: &Path, metadata: &fs::Metadata) -> Option<String> {
     Some(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-fn rebuild_index_sync(root: Option<String>) -> Result<IndexStatus, String> {
+fn rebuild_index_sync(root: Option<String>, context: Option<&JobContext>) -> Result<IndexStatus, String> {
     let requested_root = root
         .map(PathBuf::from)
         .or_else(dirs::home_dir)
@@ -267,6 +269,9 @@ fn rebuild_index_sync(root: Option<String>) -> Result<IndexStatus, String> {
         .into_iter()
         .filter_entry(|entry| !skipped_directory(entry))
     {
+        if context.is_some_and(JobContext::cancelled) {
+            return Err("Index rebuild cancelled".into());
+        }
         if indexed >= INDEX_ENTRY_LIMIT {
             break;
         }
@@ -292,6 +297,9 @@ fn rebuild_index_sync(root: Option<String>) -> Result<IndexStatus, String> {
             .unwrap_or_default();
         let size = metadata.is_file().then_some(metadata.len().min(i64::MAX as u64) as i64);
         let content_sample = read_content_sample(path_ref, &metadata);
+        if context.is_some_and(JobContext::cancelled) {
+            return Err("Index rebuild cancelled".into());
+        }
         let path = path_ref.to_string_lossy().into_owned();
 
         transaction
@@ -322,8 +330,16 @@ fn rebuild_index_sync(root: Option<String>) -> Result<IndexStatus, String> {
             )
             .map_err(|error| error.to_string())?;
         indexed += 1;
+        if indexed % 500 == 0 {
+            if let Some(context) = context {
+                context.progress(None, Some(format!("Indexed {indexed} entries")));
+            }
+        }
     }
 
+    if context.is_some_and(JobContext::cancelled) {
+        return Err("Index rebuild cancelled".into());
+    }
     transaction
         .execute("DELETE FROM entries WHERE generation <> ?1", [generation])
         .map_err(|error| error.to_string())?;
@@ -342,6 +358,9 @@ fn rebuild_index_sync(root: Option<String>) -> Result<IndexStatus, String> {
     }
     transaction.commit().map_err(|error| error.to_string())?;
 
+    if let Some(context) = context {
+        context.progress(Some(1.0), Some(format!("Indexed {indexed} entries")));
+    }
     status_from_connection(&connection)
 }
 
@@ -469,9 +488,21 @@ pub fn index_status() -> Result<IndexStatus, String> {
 
 #[tauri::command]
 pub async fn rebuild_index(root: Option<String>) -> Result<IndexStatus, String> {
-    tauri::async_runtime::spawn_blocking(move || rebuild_index_sync(root))
+    tauri::async_runtime::spawn_blocking(move || rebuild_index_sync(root, None))
         .await
         .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub fn enqueue_index_rebuild(app: AppHandle, root: Option<String>) -> Result<u64, String> {
+    let label = root
+        .as_deref()
+        .and_then(|value| Path::new(value).file_name())
+        .map(|value| format!("Rebuild index · {}", value.to_string_lossy()))
+        .unwrap_or_else(|| "Rebuild Scout index".to_string());
+    Ok(queue::enqueue_blocking(app, "index", label, move |context| {
+        rebuild_index_sync(root, Some(&context))
+    }))
 }
 
 #[tauri::command]

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { openEntry } from "./fs";
+import { enqueueAndWait } from "./operation-queue";
 
 const INDEX_VERSION = 2;
 const SAVED_SEARCHES_KEY = "scout.saved-searches.v1";
@@ -28,7 +29,6 @@ interface SavedSearch {
 }
 
 const indexStatus = () => invoke<IndexStatus>("index_status");
-const rebuildIndex = (root: string | null = null) => invoke<IndexStatus>("rebuild_index", { root });
 const searchIndex = (query: string, limit = 40) => invoke<SearchResult[]>("search_index", { query, limit });
 const recordIndexOpen = (path: string) => invoke<void>("record_index_open", { path });
 
@@ -77,7 +77,13 @@ async function ensureIndex() {
   if (status.count > 0 && status.version >= INDEX_VERSION) return status;
 
   setStatus(status.count > 0 ? "Upgrading local index…" : "Building local index…");
-  indexingPromise = rebuildIndex().finally(() => {
+  indexingPromise = enqueueAndWait<IndexStatus>(
+    "enqueue_index_rebuild",
+    { root: null },
+    (job) => {
+      if (job.detail) setStatus(job.detail);
+    },
+  ).finally(() => {
     indexingPromise = null;
   });
   const rebuilt = await indexingPromise;

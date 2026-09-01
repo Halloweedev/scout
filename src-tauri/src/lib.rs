@@ -59,6 +59,7 @@ pub fn run() {
             queue::clear_finished_operations,
             search::index_status,
             search::rebuild_index,
+            search::enqueue_index_rebuild,
             search::search_index,
             search::record_index_open,
             similar::find_similar_photos,
