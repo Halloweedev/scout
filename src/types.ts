@@ -38,7 +38,7 @@ export interface ClipboardState {
   paths: string[];
 }
 
-export type PreviewKind = "directory" | "image" | "text" | "markdown" | "unsupported";
+export type PreviewKind = "directory" | "image" | "text" | "markdown" | "pdf" | "audio" | "video" | "archive" | "unsupported";
 
 export interface PreviewMetadataItem {
   label: string;
