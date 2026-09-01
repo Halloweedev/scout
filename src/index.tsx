@@ -1,5 +1,6 @@
 import { render } from "solid-js/web";
 import App from "./App";
+import { installDiskMap } from "./lib/disk-map";
 import { installDuplicateFinder } from "./lib/duplicates";
 import { installGlobalSearch } from "./lib/global-search";
 import { installImageThumbnails } from "./lib/thumbnails";
@@ -16,6 +17,7 @@ import "./thumbnails.css";
 import "./global-search.css";
 import "./utilities.css";
 import "./duplicates.css";
+import "./disk-map.css";
 
 const root = document.getElementById("root");
 
@@ -30,6 +32,7 @@ const thumbnailCleanup = installImageThumbnails();
 const globalSearchCleanup = installGlobalSearch();
 const utilitiesCleanup = installUtilities();
 const duplicateFinderCleanup = installDuplicateFinder();
+const diskMapCleanup = installDiskMap();
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
@@ -39,6 +42,7 @@ if (import.meta.hot) {
     globalSearchCleanup();
     utilitiesCleanup();
     duplicateFinderCleanup();
+    diskMapCleanup();
     void nativeDropCleanup.then((cleanup) => cleanup());
   });
 }
