@@ -1,4 +1,5 @@
 mod archive;
+mod duplicates;
 mod fs;
 mod preview;
 mod search;
@@ -11,6 +12,7 @@ pub fn run() {
         .manage(watch::WatchState::default())
         .invoke_handler(tauri::generate_handler![
             archive::preview_zip_archive,
+            duplicates::find_duplicate_files,
             fs::special_directories,
             fs::list_directory,
             fs::rename_entry,

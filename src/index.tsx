@@ -1,5 +1,6 @@
 import { render } from "solid-js/web";
 import App from "./App";
+import { installDuplicateFinder } from "./lib/duplicates";
 import { installGlobalSearch } from "./lib/global-search";
 import { installImageThumbnails } from "./lib/thumbnails";
 import { installInternalPointerDrag } from "./lib/internal-drag";
@@ -14,6 +15,7 @@ import "./rich-previews.css";
 import "./thumbnails.css";
 import "./global-search.css";
 import "./utilities.css";
+import "./duplicates.css";
 
 const root = document.getElementById("root");
 
@@ -27,6 +29,7 @@ const quickLookCleanup = installQuickLook();
 const thumbnailCleanup = installImageThumbnails();
 const globalSearchCleanup = installGlobalSearch();
 const utilitiesCleanup = installUtilities();
+const duplicateFinderCleanup = installDuplicateFinder();
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
@@ -35,6 +38,7 @@ if (import.meta.hot) {
     thumbnailCleanup();
     globalSearchCleanup();
     utilitiesCleanup();
+    duplicateFinderCleanup();
     void nativeDropCleanup.then((cleanup) => cleanup());
   });
 }
