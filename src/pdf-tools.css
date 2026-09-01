@@ -1,0 +1,258 @@
+.pdf-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgb(0 0 0 / 48%);
+  backdrop-filter: blur(12px);
+}
+
+.pdf-sheet {
+  width: min(680px, calc(100vw - 48px));
+  max-height: min(760px, calc(100vh - 56px));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 20px;
+  background: rgb(18 18 18 / 94%);
+  box-shadow: 0 28px 90px rgb(0 0 0 / 55%);
+}
+
+.pdf-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 60px;
+  padding: 0 18px 0 22px;
+  border-bottom: 1px solid rgb(255 255 255 / 7%);
+}
+
+.pdf-title {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.pdf-close,
+.pdf-secondary,
+.pdf-primary {
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pdf-close {
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: transparent;
+  color: rgb(255 255 255 / 58%);
+}
+
+.pdf-close:hover {
+  background: rgb(255 255 255 / 6%);
+  color: rgb(255 255 255 / 86%);
+}
+
+.pdf-body {
+  overflow: auto;
+  padding: 20px 22px 24px;
+}
+
+.pdf-loading,
+.pdf-empty,
+.pdf-error,
+.pdf-intro,
+.pdf-hint,
+.pdf-detail {
+  color: rgb(255 255 255 / 52%);
+}
+
+.pdf-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 18px;
+}
+
+.pdf-name {
+  max-width: 520px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 19px;
+  font-weight: 670;
+  letter-spacing: -0.02em;
+}
+
+.pdf-detail {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.pdf-section {
+  padding: 20px 0;
+  border-top: 1px solid rgb(255 255 255 / 7%);
+}
+
+.pdf-section h3 {
+  margin: 0 0 13px;
+  font-size: 12px;
+  font-weight: 650;
+  color: rgb(255 255 255 / 72%);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pdf-field {
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+  color: rgb(255 255 255 / 54%);
+}
+
+.pdf-input {
+  width: 100%;
+  height: 38px;
+  box-sizing: border-box;
+  padding: 0 11px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 9px;
+  outline: none;
+  background: rgb(255 255 255 / 4%);
+  color: rgb(255 255 255 / 92%);
+  font: inherit;
+}
+
+.pdf-input:focus {
+  border-color: rgb(255 255 255 / 20%);
+  background: rgb(255 255 255 / 6%);
+}
+
+.pdf-hint,
+.pdf-intro {
+  margin: 8px 0 14px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pdf-action-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pdf-secondary,
+.pdf-primary {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pdf-secondary {
+  border: 1px solid rgb(255 255 255 / 8%);
+  background: rgb(255 255 255 / 5%);
+  color: rgb(255 255 255 / 76%);
+}
+
+.pdf-secondary:hover {
+  background: rgb(255 255 255 / 8%);
+  color: rgb(255 255 255 / 94%);
+}
+
+.pdf-secondary.danger:hover {
+  background: rgb(255 255 255 / 11%);
+}
+
+.pdf-primary {
+  background: rgb(244 244 244);
+  color: rgb(18 18 18);
+}
+
+.pdf-primary:hover {
+  background: white;
+}
+
+.pdf-metadata {
+  display: grid;
+}
+
+.pdf-metadata-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.32fr) 1fr;
+  gap: 18px;
+  padding: 9px 0;
+  border-top: 1px solid rgb(255 255 255 / 5%);
+  font-size: 12px;
+}
+
+.pdf-metadata-row:first-child {
+  border-top: 0;
+}
+
+.pdf-metadata-key {
+  color: rgb(255 255 255 / 46%);
+}
+
+.pdf-metadata-value {
+  overflow-wrap: anywhere;
+  color: rgb(255 255 255 / 76%);
+}
+
+.pdf-file-list {
+  display: grid;
+  gap: 4px;
+  margin: 14px 0 20px;
+}
+
+.pdf-file-row {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 10px;
+  border-radius: 9px;
+  background: rgb(255 255 255 / 4%);
+  font-size: 12px;
+}
+
+.pdf-file-number {
+  color: rgb(255 255 255 / 38%);
+}
+
+.pdf-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 18px;
+  border-top: 1px solid rgb(255 255 255 / 7%);
+}
+
+.pdf-toast {
+  position: fixed;
+  z-index: 120;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  max-width: min(520px, calc(100vw - 40px));
+  padding: 10px 14px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 10px;
+  background: rgb(25 25 25 / 96%);
+  box-shadow: 0 14px 50px rgb(0 0 0 / 45%);
+  color: rgb(255 255 255 / 82%);
+  font-size: 12px;
+}
+
+.pdf-toast.error {
+  color: rgb(255 255 255 / 95%);
+}
+
+.pdf-menu-separator {
+  margin-top: 5px;
+}
