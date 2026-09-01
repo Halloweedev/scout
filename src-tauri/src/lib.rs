@@ -1,3 +1,4 @@
+mod archive;
 mod fs;
 mod preview;
 mod watch;
@@ -7,6 +8,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(watch::WatchState::default())
         .invoke_handler(tauri::generate_handler![
+            archive::preview_zip_archive,
             fs::special_directories,
             fs::list_directory,
             fs::rename_entry,
