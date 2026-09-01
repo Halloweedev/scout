@@ -247,7 +247,7 @@ pub fn reorder_pdf_pages(path: String, pages: Vec<u32>, destination: String) -> 
     retain_pages_in_order(&mut doc, &pages)?;
     let output = unique_output(&destination, &format!("{} - reordered", stem(&source)));
     let output = save_pdf(doc, &output)?;
-    Ok(PdfOperationResult { paths: vec![output], pages })
+    Ok(PdfOperationResult { paths: vec![output], pages: total })
 }
 
 #[tauri::command]
@@ -411,7 +411,8 @@ pub fn merge_pdfs(paths: Vec<String>, destination: String) -> Result<PdfOperatio
     document.renumber_objects();
     document.compress();
 
+    let page_count = documents_pages.len();
     let output = unique_output(&destination, &format!("{} - merged", stem(&first_source)));
     let output = save_pdf(document, &output)?;
-    Ok(PdfOperationResult { paths: vec![output], pages: documents_pages.len() })
+    Ok(PdfOperationResult { paths: vec![output], pages: page_count })
 }
