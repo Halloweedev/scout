@@ -1,4 +1,5 @@
 mod archive;
+mod archive_ops;
 mod converters;
 mod disk;
 mod duplicates;
@@ -22,6 +23,8 @@ pub fn run() {
         .manage(queue::OperationQueueState::default())
         .invoke_handler(tauri::generate_handler![
             archive::preview_zip_archive,
+            archive_ops::enqueue_zip_creation,
+            archive_ops::enqueue_zip_extraction,
             converters::converter_capabilities,
             converters::convert_media,
             converters::convert_with_pandoc,

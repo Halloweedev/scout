@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { enqueueAndWait } from "./operation-queue";
 
 interface ChecksumResult {
   path: string;
@@ -247,9 +248,9 @@ async function createZip() {
   const paths = selectedPaths();
   const destination = activeDirectory();
   if (!paths.length || !destination) return;
-  showToast("Creating ZIP archive…");
+  showToast("ZIP added to Operations");
   try {
-    const result = await invoke<ArchiveOperationResult>("create_zip_archive", { paths, destination });
+    const result = await enqueueAndWait<ArchiveOperationResult>("enqueue_zip_creation", { paths, destination });
     showToast(`Created ${result.path.split(/[\\/]/).pop() ?? "archive"}`);
   } catch (error) {
     showToast(String(error), true);
@@ -260,9 +261,9 @@ async function extractZip() {
   const paths = selectedPaths();
   const destination = activeDirectory();
   if (paths.length !== 1 || !destination || !selectedIsSingleZip()) return;
-  showToast("Extracting ZIP archive…");
+  showToast("Extraction added to Operations");
   try {
-    const result = await invoke<ArchiveOperationResult>("extract_zip_archive", { path: paths[0], destination });
+    const result = await enqueueAndWait<ArchiveOperationResult>("enqueue_zip_extraction", { path: paths[0], destination });
     showToast(`Extracted ${result.entries} items`);
   } catch (error) {
     showToast(String(error), true);
