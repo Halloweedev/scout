@@ -1,12 +1,18 @@
-use crate::{fs as scout_fs, history::HistoryState, queue::{self, JobContext}};
+use crate::{
+    fs as scout_fs,
+    history::HistoryState,
+    queue::{self, JobContext},
+};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
     sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use walkdir::WalkDir;
 
 const MAX_RULES: usize = 100;
@@ -66,6 +72,11 @@ pub struct AutomationState {
     inner: Mutex<RuleStore>,
 }
 
+#[derive(Default)]
+pub struct AutomationWatchState {
+    watchers: Mutex<HashMap<u64, RecommendedWatcher>>,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AutomationMatch {
@@ -89,6 +100,27 @@ pub struct AutomationRunResult {
     rule_id: u64,
     matched: usize,
     affected: usize,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AutomationTriggerEvent {
+    rule_id: u64,
+    paths: Vec<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AutomationWatchError {
+    rule_id: u64,
+    message: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationWatchSummary {
+    active: usize,
+    skipped: usize,
 }
 
 fn now_ms() -> u64 {
@@ -261,6 +293,20 @@ fn entry_matches(rule: &AutomationRule, path: &Path, metadata: &fs::Metadata) ->
     true
 }
 
+fn path_matches_rule(rule: &AutomationRule, path: &Path) -> bool {
+    let root = Path::new(&rule.folder);
+    if !path.starts_with(root) {
+        return false;
+    }
+    if !rule.recursive && path.parent() != Some(root) {
+        return false;
+    }
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    !metadata.file_type().is_symlink() && entry_matches(rule, path, &metadata)
+}
+
 fn scan_rule(rule: &AutomationRule, match_limit: usize, context: Option<&JobContext>) -> Result<AutomationPreview, String> {
     let root = PathBuf::from(&rule.folder);
     if !root.is_dir() {
@@ -335,20 +381,20 @@ fn render_rename(path: &Path, template: &str, number: usize) -> Result<String, S
     Ok(rendered)
 }
 
-fn execute_rule(app: &AppHandle, rule: AutomationRule, context: JobContext) -> Result<AutomationRunResult, String> {
-    context.progress(None, Some("Scanning rule folder…".to_string()));
-    let preview = scan_rule(&rule, RUN_MATCH_LIMIT + 1, Some(&context))?;
-    if preview.truncated || preview.matches.len() > RUN_MATCH_LIMIT {
-        return Err("Rule matched too many items. Narrow the rule before running it.".into());
-    }
-    let matched = preview.matches.len();
+fn apply_matches(
+    app: &AppHandle,
+    rule: &AutomationRule,
+    matches: Vec<AutomationMatch>,
+    context: &JobContext,
+) -> Result<AutomationRunResult, String> {
+    let matched = matches.len();
     if matched == 0 {
         context.progress(Some(1.0), Some("No matching items".to_string()));
         return Ok(AutomationRunResult { rule_id: rule.id, matched: 0, affected: 0 });
     }
 
     let mut affected = 0usize;
-    for (index, item) in preview.matches.into_iter().enumerate() {
+    for (index, item) in matches.into_iter().enumerate() {
         if context.cancelled() {
             return Err("Automation cancelled".into());
         }
@@ -374,6 +420,123 @@ fn execute_rule(app: &AppHandle, rule: AutomationRule, context: JobContext) -> R
     Ok(AutomationRunResult { rule_id: rule.id, matched, affected })
 }
 
+fn execute_rule(app: &AppHandle, rule: AutomationRule, context: JobContext) -> Result<AutomationRunResult, String> {
+    context.progress(None, Some("Scanning rule folder…".to_string()));
+    let preview = scan_rule(&rule, RUN_MATCH_LIMIT + 1, Some(&context))?;
+    if preview.truncated || preview.matches.len() > RUN_MATCH_LIMIT {
+        return Err("Rule matched too many items. Narrow the rule before running it.".into());
+    }
+    apply_matches(app, &rule, preview.matches, &context)
+}
+
+fn triggered_matches(rule: &AutomationRule, paths: Vec<String>) -> Vec<AutomationMatch> {
+    let mut seen = HashSet::new();
+    let mut matches = Vec::new();
+    for raw_path in paths {
+        let path = PathBuf::from(&raw_path);
+        if !seen.insert(path.clone()) || !path_matches_rule(rule, &path) {
+            continue;
+        }
+        let Ok(metadata) = fs::symlink_metadata(&path) else { continue };
+        matches.push(AutomationMatch {
+            path: raw_path,
+            name: path
+                .file_name()
+                .map(|value| value.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            kind: if metadata.is_dir() { "directory".to_string() } else { "file".to_string() },
+            size: metadata.is_file().then_some(metadata.len()),
+        });
+        if matches.len() >= RUN_MATCH_LIMIT {
+            break;
+        }
+    }
+    matches
+}
+
+fn execute_triggered_rule(
+    app: &AppHandle,
+    rule: AutomationRule,
+    paths: Vec<String>,
+    context: JobContext,
+) -> Result<AutomationRunResult, String> {
+    if !rule.enabled {
+        return Err("Automation rule is disabled".into());
+    }
+    context.progress(None, Some("Checking changed items…".to_string()));
+    let matches = triggered_matches(&rule, paths);
+    apply_matches(app, &rule, matches, &context)
+}
+
+fn sync_watches_impl(
+    app: &AppHandle,
+    rules: &AutomationState,
+    watches: &AutomationWatchState,
+) -> Result<AutomationWatchSummary, String> {
+    let enabled_rules = {
+        let store = rules.inner.lock().map_err(|_| "Automation rules are unavailable".to_string())?;
+        store.rules.iter().filter(|rule| rule.enabled).cloned().collect::<Vec<_>>()
+    };
+
+    let mut next = HashMap::new();
+    let mut skipped = 0usize;
+    for rule in enabled_rules {
+        let target = PathBuf::from(&rule.folder);
+        if !target.is_dir() {
+            skipped += 1;
+            continue;
+        }
+        let event_rule = rule.clone();
+        let rule_id = rule.id;
+        let event_app = app.clone();
+        let mut watcher = notify::recommended_watcher(move |result: notify::Result<Event>| match result {
+            Ok(event) => {
+                if !matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_)) {
+                    return;
+                }
+                let paths = event
+                    .paths
+                    .into_iter()
+                    .filter(|path| path_matches_rule(&event_rule, path))
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .collect::<Vec<_>>();
+                if !paths.is_empty() {
+                    let _ = event_app.emit("scout-automation-trigger", AutomationTriggerEvent { rule_id, paths });
+                }
+            }
+            Err(error) => {
+                let _ = event_app.emit(
+                    "scout-automation-watch-error",
+                    AutomationWatchError { rule_id, message: error.to_string() },
+                );
+            }
+        })
+        .map_err(|error| error.to_string())?;
+        let mode = if rule.recursive {
+            RecursiveMode::Recursive
+        } else {
+            RecursiveMode::NonRecursive
+        };
+        if let Err(error) = watcher.watch(&target, mode) {
+            skipped += 1;
+            let _ = app.emit(
+                "scout-automation-watch-error",
+                AutomationWatchError { rule_id, message: error.to_string() },
+            );
+            continue;
+        }
+        next.insert(rule_id, watcher);
+    }
+
+    let active = next.len();
+    let mut current = watches
+        .watchers
+        .lock()
+        .map_err(|_| "Automation watcher state is unavailable".to_string())?;
+    *current = next;
+    Ok(AutomationWatchSummary { active, skipped })
+}
+
 #[tauri::command]
 pub fn automation_rules(state: State<'_, AutomationState>) -> Result<Vec<AutomationRule>, String> {
     let store = state.inner.lock().map_err(|_| "Automation rules are unavailable".to_string())?;
@@ -383,7 +546,12 @@ pub fn automation_rules(state: State<'_, AutomationState>) -> Result<Vec<Automat
 }
 
 #[tauri::command]
-pub fn save_automation_rule(input: AutomationRuleInput, state: State<'_, AutomationState>) -> Result<AutomationRule, String> {
+pub fn save_automation_rule(
+    input: AutomationRuleInput,
+    app: AppHandle,
+    state: State<'_, AutomationState>,
+    watches: State<'_, AutomationWatchState>,
+) -> Result<AutomationRule, String> {
     let input = validate_rule_input(input)?;
     let snapshot;
     let saved;
@@ -432,11 +600,17 @@ pub fn save_automation_rule(input: AutomationRuleInput, state: State<'_, Automat
         snapshot = store.clone();
     }
     persist_store(&snapshot)?;
+    let _ = sync_watches_impl(&app, &state, &watches);
     Ok(saved)
 }
 
 #[tauri::command]
-pub fn delete_automation_rule(id: u64, state: State<'_, AutomationState>) -> Result<(), String> {
+pub fn delete_automation_rule(
+    id: u64,
+    app: AppHandle,
+    state: State<'_, AutomationState>,
+    watches: State<'_, AutomationWatchState>,
+) -> Result<(), String> {
     let snapshot = {
         let mut store = state.inner.lock().map_err(|_| "Automation rules are unavailable".to_string())?;
         let before = store.rules.len();
@@ -446,11 +620,19 @@ pub fn delete_automation_rule(id: u64, state: State<'_, AutomationState>) -> Res
         }
         store.clone()
     };
-    persist_store(&snapshot)
+    persist_store(&snapshot)?;
+    let _ = sync_watches_impl(&app, &state, &watches);
+    Ok(())
 }
 
 #[tauri::command]
-pub fn set_automation_rule_enabled(id: u64, enabled: bool, state: State<'_, AutomationState>) -> Result<AutomationRule, String> {
+pub fn set_automation_rule_enabled(
+    id: u64,
+    enabled: bool,
+    app: AppHandle,
+    state: State<'_, AutomationState>,
+    watches: State<'_, AutomationWatchState>,
+) -> Result<AutomationRule, String> {
     let snapshot;
     let updated;
     {
@@ -466,6 +648,7 @@ pub fn set_automation_rule_enabled(id: u64, enabled: bool, state: State<'_, Auto
         snapshot = store.clone();
     }
     persist_store(&snapshot)?;
+    let _ = sync_watches_impl(&app, &state, &watches);
     Ok(updated)
 }
 
@@ -485,4 +668,26 @@ pub fn enqueue_automation_rule(app: AppHandle, id: u64) -> Result<u64, String> {
     Ok(queue::enqueue_blocking(app, "automation", label, move |context| {
         execute_rule(&app_for_worker, rule, context)
     }))
+}
+
+#[tauri::command]
+pub fn enqueue_automation_trigger(app: AppHandle, id: u64, paths: Vec<String>) -> Result<u64, String> {
+    let rule = rule_by_id(&app.state::<AutomationState>(), id)?;
+    if !rule.enabled {
+        return Err("Automation rule is disabled".into());
+    }
+    let label = format!("Auto · {}", rule.name);
+    let app_for_worker = app.clone();
+    Ok(queue::enqueue_blocking(app, "automation", label, move |context| {
+        execute_triggered_rule(&app_for_worker, rule, paths, context)
+    }))
+}
+
+#[tauri::command]
+pub fn sync_automation_watches(
+    app: AppHandle,
+    rules: State<'_, AutomationState>,
+    watches: State<'_, AutomationWatchState>,
+) -> Result<AutomationWatchSummary, String> {
+    sync_watches_impl(&app, &rules, &watches)
 }

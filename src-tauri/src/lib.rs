@@ -23,6 +23,7 @@ pub fn run() {
         .manage(history::HistoryState::default())
         .manage(queue::OperationQueueState::default())
         .manage(automation::AutomationState::default())
+        .manage(automation::AutomationWatchState::default())
         .invoke_handler(tauri::generate_handler![
             archive::preview_zip_archive,
             archive_ops::enqueue_zip_creation,
@@ -33,6 +34,8 @@ pub fn run() {
             automation::set_automation_rule_enabled,
             automation::preview_automation_rule,
             automation::enqueue_automation_rule,
+            automation::enqueue_automation_trigger,
+            automation::sync_automation_watches,
             converters::converter_capabilities,
             converters::convert_media,
             converters::convert_with_pandoc,

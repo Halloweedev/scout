@@ -64,17 +64,25 @@ M4's implementation baseline is complete. External converter features are enable
 
 ## M5 — Automation and operations
 
-- [ ] Hazel-style rules
-- [ ] File triggers
-- [ ] Move/copy/rename/tag/convert/optimize/archive/script actions
+- [x] Persisted Hazel-style rule definitions with local manager UI
+- [x] Safe dry-run preview before execution
+- [x] Manual rule execution through the shared Operations queue
+- [x] Rule conditions for folder, recursion, kind, extension, name, and size
+- [x] Move/copy/rename rule actions
+- [x] Live filesystem triggers for enabled rules
+- [x] Dedicated automation watcher pool independent from active browsing
+- [x] Debounced path-targeted live runs with running/cooldown loop suppression
+- [ ] Tag/convert/optimize/archive/script rule actions
 - [x] Shared operation queue core with queued/running/completed/failed/cancelled states
 - [x] Operations activity UI with progress and cancellation controls
 - [x] Cancellation for duplicate scans and folder-size scans
 - [x] Cancellation for similar-photo scans
 - [x] Cancellation for persistent index rebuilds
-- [ ] Migrate remaining long-running conversion/archive work to the shared queue
+- [x] Real child-process cancellation for FFmpeg, Pandoc, and LibreOffice conversions
+- [x] Cancellable ZIP creation/extraction with byte and item progress
+- [ ] Migrate remaining long-running image/PDF/checksum work to the shared queue where beneficial
 - [x] Footprints operation history
 - [x] Undo/redo for reversible rename/copy/duplicate/move/new-folder operations
-- [ ] Persistent Footprints history across app launches
+- [x] Persistent Footprints history across app launches
 
 Native Trash is intentionally excluded from undo until Scout can restore trashed items reliably across macOS, Windows, and Linux.
