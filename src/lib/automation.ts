@@ -6,6 +6,7 @@ type AutomationAction =
   | { type: "move"; destination: string }
   | { type: "copy"; destination: string }
   | { type: "rename"; template: string }
+  | { type: "archive"; destination: string }
   | { type: "image"; destination: string; format: ImageFormat; maxWidth: number | null; maxHeight: number | null; quality: number | null };
 
 interface AutomationRule {
@@ -336,7 +337,7 @@ function renderEditor(container: HTMLElement) {
   const actionSelect = selectField(
     "Action",
     current.actionType,
-    [["move", "Move to folder"], ["copy", "Copy to folder"], ["rename", "Rename"], ["image", "Optimize / convert image"]],
+    [["move", "Move to folder"], ["copy", "Copy to folder"], ["rename", "Rename"], ["archive", "Archive to ZIP"], ["image", "Optimize / convert image"]],
     (value) => {
       current.actionType = value as DraftRule["actionType"];
       if (current.actionType === "rename") current.actionValue = "{stem}-sorted.{ext}";
@@ -370,6 +371,8 @@ function renderEditor(container: HTMLElement) {
     hint.textContent = "Rename placeholders: {name}, {stem}, {ext}, {n}.";
   } else if (current.actionType === "image") {
     hint.textContent = "Image rules require files. Outputs are created outside the watched folder through Scout’s cancellable image engine.";
+  } else if (current.actionType === "archive") {
+    hint.textContent = "Each matching item becomes its own ZIP in the destination folder. The destination must be outside the watched tree.";
   } else {
     hint.textContent = "For safety, destinations inside the watched folder are blocked to prevent self-trigger loops.";
   }

@@ -3,6 +3,7 @@ use crate::{
     history::HistoryState,
     images::{self, ImageTransformOptions},
     queue::{self, JobContext},
+    utilities,
 };
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
@@ -27,6 +28,7 @@ pub enum AutomationAction {
     Move { destination: String },
     Copy { destination: String },
     Rename { template: String },
+    Archive { destination: String },
     Image {
         destination: String,
         format: String,
@@ -238,7 +240,9 @@ fn validate_rule_input(mut input: AutomationRuleInput) -> Result<AutomationRuleI
         }
     }
     match &mut input.action {
-        AutomationAction::Move { destination } | AutomationAction::Copy { destination } => {
+        AutomationAction::Move { destination }
+        | AutomationAction::Copy { destination }
+        | AutomationAction::Archive { destination } => {
             validate_output_destination(&folder, destination)?;
         }
         AutomationAction::Rename { template } => {
@@ -446,6 +450,9 @@ fn apply_matches(
             AutomationAction::Rename { template } => {
                 let new_name = render_rename(Path::new(&item.path), template, index + 1)?;
                 scout_fs::rename_entry(item.path.clone(), new_name, history)?;
+            }
+            AutomationAction::Archive { destination } => {
+                utilities::create_zip_archive(vec![item.path.clone()], destination.clone())?;
             }
             AutomationAction::Image {
                 destination,
