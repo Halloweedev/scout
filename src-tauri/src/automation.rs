@@ -1,6 +1,7 @@
 use crate::{
     fs as scout_fs,
     history::HistoryState,
+    images::{self, ImageTransformOptions},
     queue::{self, JobContext},
 };
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -26,6 +27,13 @@ pub enum AutomationAction {
     Move { destination: String },
     Copy { destination: String },
     Rename { template: String },
+    Image {
+        destination: String,
+        format: String,
+        max_width: Option<u32>,
+        max_height: Option<u32>,
+        quality: Option<u8>,
+    },
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -194,6 +202,18 @@ fn normalized_optional(value: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn validate_output_destination(folder: &Path, destination: &mut String) -> Result<(), String> {
+    *destination = destination.trim().to_string();
+    let target = PathBuf::from(destination.as_str());
+    if !target.is_dir() {
+        return Err("Automation destination is not a directory".into());
+    }
+    if target == folder || target.starts_with(folder) {
+        return Err("Automation destination cannot be inside the watched folder".into());
+    }
+    Ok(())
+}
+
 fn validate_rule_input(mut input: AutomationRuleInput) -> Result<AutomationRuleInput, String> {
     input.name = input.name.trim().to_string();
     if input.name.is_empty() {
@@ -219,14 +239,7 @@ fn validate_rule_input(mut input: AutomationRuleInput) -> Result<AutomationRuleI
     }
     match &mut input.action {
         AutomationAction::Move { destination } | AutomationAction::Copy { destination } => {
-            *destination = destination.trim().to_string();
-            let target = PathBuf::from(destination.as_str());
-            if !target.is_dir() {
-                return Err("Automation destination is not a directory".into());
-            }
-            if target == folder || target.starts_with(&folder) {
-                return Err("Automation destination cannot be inside the watched folder".into());
-            }
+            validate_output_destination(&folder, destination)?;
         }
         AutomationAction::Rename { template } => {
             *template = template.trim().to_string();
@@ -235,6 +248,30 @@ fn validate_rule_input(mut input: AutomationRuleInput) -> Result<AutomationRuleI
             }
             if template.contains('/') || template.contains('\\') {
                 return Err("Rename template cannot contain path separators".into());
+            }
+        }
+        AutomationAction::Image {
+            destination,
+            format,
+            max_width,
+            max_height,
+            quality,
+        } => {
+            if input.kind != "file" {
+                return Err("Image automation rules must match files".into());
+            }
+            validate_output_destination(&folder, destination)?;
+            *format = match format.trim().to_ascii_lowercase().as_str() {
+                "jpg" | "jpeg" => "jpg".to_string(),
+                "png" => "png".to_string(),
+                "webp" => "webp".to_string(),
+                _ => return Err("Image automation output must be JPG, PNG, or WebP".into()),
+            };
+            if max_width.is_some_and(|value| value == 0) || max_height.is_some_and(|value| value == 0) {
+                return Err("Image dimensions must be greater than zero".into());
+            }
+            if quality.is_some_and(|value| value == 0 || value > 100) {
+                return Err("JPEG quality must be between 1 and 100".into());
             }
         }
     }
@@ -409,6 +446,25 @@ fn apply_matches(
             AutomationAction::Rename { template } => {
                 let new_name = render_rename(Path::new(&item.path), template, index + 1)?;
                 scout_fs::rename_entry(item.path.clone(), new_name, history)?;
+            }
+            AutomationAction::Image {
+                destination,
+                format,
+                max_width,
+                max_height,
+                quality,
+            } => {
+                images::transform_blocking(
+                    vec![item.path.clone()],
+                    destination.clone(),
+                    ImageTransformOptions {
+                        format: format.clone(),
+                        max_width: *max_width,
+                        max_height: *max_height,
+                        quality: *quality,
+                    },
+                    Some(context),
+                )?;
             }
         }
         affected += 1;

@@ -1,10 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { enqueueAndWait, type OperationJob } from "./operation-queue";
 
+type ImageFormat = "jpg" | "png" | "webp";
 type AutomationAction =
   | { type: "move"; destination: string }
   | { type: "copy"; destination: string }
-  | { type: "rename"; template: string };
+  | { type: "rename"; template: string }
+  | { type: "image"; destination: string; format: ImageFormat; maxWidth: number | null; maxHeight: number | null; quality: number | null };
 
 interface AutomationRule {
   id: number;
@@ -41,6 +43,8 @@ interface AutomationRunResult {
   affected: number;
 }
 
+type ActionType = AutomationAction["type"];
+
 interface DraftRule {
   id: number | null;
   name: string;
@@ -52,8 +56,12 @@ interface DraftRule {
   kind: "any" | "file" | "directory";
   minSizeMb: string;
   maxSizeMb: string;
-  actionType: "move" | "copy" | "rename";
+  actionType: ActionType;
   actionValue: string;
+  imageFormat: ImageFormat;
+  imageMaxWidth: string;
+  imageMaxHeight: string;
+  imageQuality: string;
 }
 
 let observer: MutationObserver | null = null;
@@ -98,7 +106,15 @@ function newDraft(): DraftRule {
     maxSizeMb: "",
     actionType: "move",
     actionValue: "",
+    imageFormat: "webp",
+    imageMaxWidth: "",
+    imageMaxHeight: "",
+    imageQuality: "88",
   };
+}
+
+function actionDestination(action: AutomationAction) {
+  return action.type === "rename" ? "" : action.destination;
 }
 
 function draftFromRule(rule: AutomationRule): DraftRule {
@@ -114,7 +130,11 @@ function draftFromRule(rule: AutomationRule): DraftRule {
     minSizeMb: rule.minSize == null ? "" : String(rule.minSize / (1024 * 1024)),
     maxSizeMb: rule.maxSize == null ? "" : String(rule.maxSize / (1024 * 1024)),
     actionType: rule.action.type,
-    actionValue: rule.action.type === "rename" ? rule.action.template : rule.action.destination,
+    actionValue: rule.action.type === "rename" ? rule.action.template : actionDestination(rule.action),
+    imageFormat: rule.action.type === "image" ? rule.action.format : "webp",
+    imageMaxWidth: rule.action.type === "image" && rule.action.maxWidth != null ? String(rule.action.maxWidth) : "",
+    imageMaxHeight: rule.action.type === "image" && rule.action.maxHeight != null ? String(rule.action.maxHeight) : "",
+    imageQuality: rule.action.type === "image" && rule.action.quality != null ? String(rule.action.quality) : "88",
   };
 }
 
@@ -126,10 +146,34 @@ function numberBytes(value: string) {
   return Math.round(parsed * 1024 * 1024);
 }
 
+function positiveInteger(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : null;
+}
+
+function imageQuality(value: string) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(100, Math.round(parsed))) : 88;
+}
+
 function payloadFromDraft(current: DraftRule) {
-  const action: AutomationAction = current.actionType === "rename"
-    ? { type: "rename", template: current.actionValue }
-    : { type: current.actionType, destination: current.actionValue };
+  let action: AutomationAction;
+  if (current.actionType === "rename") {
+    action = { type: "rename", template: current.actionValue };
+  } else if (current.actionType === "image") {
+    action = {
+      type: "image",
+      destination: current.actionValue,
+      format: current.imageFormat,
+      maxWidth: positiveInteger(current.imageMaxWidth),
+      maxHeight: positiveInteger(current.imageMaxHeight),
+      quality: imageQuality(current.imageQuality),
+    };
+  } else {
+    action = { type: current.actionType, destination: current.actionValue };
+  }
   return {
     id: current.id,
     name: current.name,
@@ -292,10 +336,12 @@ function renderEditor(container: HTMLElement) {
   const actionSelect = selectField(
     "Action",
     current.actionType,
-    [["move", "Move to folder"], ["copy", "Copy to folder"], ["rename", "Rename"]],
+    [["move", "Move to folder"], ["copy", "Copy to folder"], ["rename", "Rename"], ["image", "Optimize / convert image"]],
     (value) => {
       current.actionType = value as DraftRule["actionType"];
-      current.actionValue = current.actionType === "rename" ? "{stem}-sorted.{ext}" : "";
+      if (current.actionType === "rename") current.actionValue = "{stem}-sorted.{ext}";
+      else current.actionValue = "";
+      if (current.actionType === "image") current.kind = "file";
       renderManager();
     },
   );
@@ -308,10 +354,25 @@ function renderEditor(container: HTMLElement) {
   actionGrid.append(actionSelect, actionValue);
   form.append(actionGrid);
 
+  if (current.actionType === "image") {
+    const imageGrid = element("div", "automation-grid");
+    imageGrid.append(
+      selectField("Output format", current.imageFormat, [["webp", "WebP"], ["jpg", "JPEG"], ["png", "PNG"]], (value) => { current.imageFormat = value as ImageFormat; }),
+      textField("Max width", current.imageMaxWidth, (value) => { current.imageMaxWidth = value; }, "Original"),
+      textField("Max height", current.imageMaxHeight, (value) => { current.imageMaxHeight = value; }, "Original"),
+      textField("JPEG quality", current.imageQuality, (value) => { current.imageQuality = value; }, "88"),
+    );
+    form.append(imageGrid);
+  }
+
   const hint = element("div", "automation-hint");
-  hint.textContent = current.actionType === "rename"
-    ? "Rename placeholders: {name}, {stem}, {ext}, {n}."
-    : "For safety, destinations inside the watched folder are blocked to prevent self-trigger loops.";
+  if (current.actionType === "rename") {
+    hint.textContent = "Rename placeholders: {name}, {stem}, {ext}, {n}.";
+  } else if (current.actionType === "image") {
+    hint.textContent = "Image rules require files. Outputs are created outside the watched folder through Scout’s cancellable image engine.";
+  } else {
+    hint.textContent = "For safety, destinations inside the watched folder are blocked to prevent self-trigger loops.";
+  }
   form.append(hint);
 
   const preview = element("div", "automation-preview");
@@ -416,7 +477,7 @@ async function openManager() {
   const title = element("div", "automation-title");
   title.textContent = "Automation";
   const subtitle = element("div", "automation-subtitle");
-  subtitle.textContent = "Local rules · dry-run first · manual execution through Operations";
+  subtitle.textContent = "Local rules · dry runs · live triggers through Operations";
   heading.append(title, subtitle);
   const headerActions = element("div", "automation-header-actions");
   const add = element("button", "automation-header-button");
