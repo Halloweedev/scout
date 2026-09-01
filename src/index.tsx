@@ -1,5 +1,6 @@
 import { render } from "solid-js/web";
 import App from "./App";
+import { installConverters } from "./lib/converters";
 import { installDiskMap } from "./lib/disk-map";
 import { installDuplicateFinder } from "./lib/duplicates";
 import { installGlobalSearch } from "./lib/global-search";
@@ -24,6 +25,7 @@ import "./disk-map.css";
 import "./image-tools.css";
 import "./similar-photos.css";
 import "./portal.css";
+import "./converters.css";
 
 const root = document.getElementById("root");
 
@@ -42,6 +44,7 @@ const diskMapCleanup = installDiskMap();
 const imageToolsCleanup = installImageTools();
 const similarPhotosCleanup = installSimilarPhotos();
 const portalCleanup = installPortal();
+const convertersCleanup = installConverters();
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
@@ -55,6 +58,7 @@ if (import.meta.hot) {
     imageToolsCleanup();
     similarPhotosCleanup();
     portalCleanup();
+    convertersCleanup();
     void nativeDropCleanup.then((cleanup) => cleanup());
   });
 }

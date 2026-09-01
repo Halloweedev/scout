@@ -1,4 +1,5 @@
 mod archive;
+mod converters;
 mod disk;
 mod duplicates;
 mod fs;
@@ -15,6 +16,10 @@ pub fn run() {
         .manage(watch::WatchState::default())
         .invoke_handler(tauri::generate_handler![
             archive::preview_zip_archive,
+            converters::converter_capabilities,
+            converters::convert_media,
+            converters::convert_with_pandoc,
+            converters::convert_with_libreoffice,
             disk::analyze_folder_sizes,
             duplicates::find_duplicate_files,
             fs::special_directories,
