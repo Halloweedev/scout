@@ -1,4 +1,5 @@
 mod fs;
+mod preview;
 mod watch;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -15,6 +16,7 @@ pub fn run() {
             fs::trash_entries,
             fs::create_folder,
             fs::open_entry,
+            preview::preview_entry,
             watch::watch_directory,
         ])
         .run(tauri::generate_context!())

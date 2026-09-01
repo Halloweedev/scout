@@ -22,12 +22,13 @@ M1's implementation baseline is complete. Platform QA and behavior hardening con
 
 ## M2 — Previews
 
-- [ ] Image thumbnails and EXIF
-- [ ] PDF
-- [ ] Text/code
-- [ ] Markdown
-- [ ] Audio/video
-- [ ] Folder-content Quick Look
+- [ ] Image thumbnails in directory views
+- [x] Image Quick Look with EXIF metadata
+- [ ] PDF Quick Look
+- [x] Text/code Quick Look
+- [ ] Rendered Markdown Quick Look (raw Markdown is previewable as text)
+- [ ] Audio/video Quick Look
+- [x] Folder-content Quick Look
 - [ ] Archive Quick Look
 
 ## M3 — Power navigation

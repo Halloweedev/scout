@@ -1,0 +1,227 @@
+import { getActiveListing } from "./fs";
+import { previewEntry } from "./preview";
+import type { PreviewChild, PreviewData, PreviewMetadataItem } from "../types";
+
+let overlay: HTMLDivElement | null = null;
+let content: HTMLDivElement | null = null;
+let title: HTMLDivElement | null = null;
+let subtitle: HTMLDivElement | null = null;
+let requestToken = 0;
+let openPath: string | null = null;
+
+function formatBytes(value: number | null) {
+  if (value === null) return "—";
+  if (value < 1024) return `${value} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let size = value / 1024;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size < 10 ? size.toFixed(1) : Math.round(size)} ${units[unit]}`;
+}
+
+function selectedPath() {
+  const row = document.querySelector<HTMLElement>(".file-row.selected");
+  const listing = getActiveListing();
+  if (!row || !listing) return null;
+  const index = Number(row.dataset.entryIndex);
+  if (!Number.isInteger(index)) return null;
+  return listing.entries[index]?.path ?? null;
+}
+
+function element<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  return node;
+}
+
+function textElement<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, value: string) {
+  const node = element(tag, className);
+  node.textContent = value;
+  return node;
+}
+
+function detailRow(label: string, value: string) {
+  const row = element("div", "quick-look-detail-row");
+  row.append(textElement("span", "quick-look-detail-label", label));
+  row.append(textElement("span", "quick-look-detail-value", value));
+  return row;
+}
+
+function metadataPanel(preview: PreviewData) {
+  const panel = element("aside", "quick-look-metadata");
+  if (preview.width && preview.height) {
+    panel.append(detailRow("Dimensions", `${preview.width} × ${preview.height}`));
+  }
+  if (preview.size !== null) panel.append(detailRow("Size", formatBytes(preview.size)));
+  if (preview.extension) panel.append(detailRow("Type", preview.extension.toUpperCase()));
+  for (const item of preview.metadata) panel.append(metadataRow(item));
+  return panel;
+}
+
+function metadataRow(item: PreviewMetadataItem) {
+  return detailRow(item.label, item.value);
+}
+
+function folderRow(child: PreviewChild) {
+  const row = element("div", "quick-look-folder-row");
+  const glyph = element("span", `quick-look-folder-glyph ${child.kind}`);
+  const name = textElement("span", "quick-look-folder-name", child.name);
+  const size = textElement("span", "quick-look-folder-size", child.kind === "directory" ? "" : formatBytes(child.size));
+  row.append(glyph, name, size);
+  return row;
+}
+
+function renderDirectory(preview: PreviewData) {
+  const wrapper = element("div", "quick-look-folder-preview");
+  const list = element("div", "quick-look-folder-list");
+  for (const child of preview.children) list.append(folderRow(child));
+  if (preview.children.length === 0) list.append(textElement("div", "quick-look-empty", "This folder is empty."));
+  if (preview.truncated) list.append(textElement("div", "quick-look-truncated", "More items…"));
+  wrapper.append(list);
+  return wrapper;
+}
+
+function renderImage(preview: PreviewData) {
+  const wrapper = element("div", "quick-look-image-layout");
+  const stage = element("div", "quick-look-image-stage");
+  if (preview.dataUrl) {
+    const image = element("img", "quick-look-image");
+    image.src = preview.dataUrl;
+    image.alt = preview.name;
+    stage.append(image);
+  }
+  wrapper.append(stage, metadataPanel(preview));
+  return wrapper;
+}
+
+function renderText(preview: PreviewData) {
+  const wrapper = element("div", "quick-look-text-layout");
+  const code = element("pre", "quick-look-text");
+  code.textContent = preview.text ?? "";
+  wrapper.append(code);
+  if (preview.truncated) wrapper.append(textElement("div", "quick-look-truncated", "Preview truncated at 512 KB."));
+  return wrapper;
+}
+
+function renderUnsupported(preview: PreviewData) {
+  const wrapper = element("div", "quick-look-unsupported");
+  wrapper.append(textElement("div", "quick-look-unsupported-title", "Preview not available yet"));
+  wrapper.append(textElement("div", "quick-look-unsupported-copy", preview.extension ? `${preview.extension.toUpperCase()} support is coming in M2.` : "This file type is not previewable yet."));
+  return wrapper;
+}
+
+function setLoading(path: string) {
+  if (!content || !title || !subtitle) return;
+  content.replaceChildren(textElement("div", "quick-look-loading", "Loading preview…"));
+  title.textContent = path.split(/[\\/]/).pop() || path;
+  subtitle.textContent = path;
+}
+
+function renderPreview(preview: PreviewData) {
+  if (!content || !title || !subtitle) return;
+  title.textContent = preview.name;
+  subtitle.textContent = preview.path;
+  const node = preview.kind === "directory"
+    ? renderDirectory(preview)
+    : preview.kind === "image"
+      ? renderImage(preview)
+      : preview.kind === "text" || preview.kind === "markdown"
+        ? renderText(preview)
+        : renderUnsupported(preview);
+  content.replaceChildren(node);
+}
+
+async function refresh(path = selectedPath()) {
+  if (!overlay || !path) return;
+  openPath = path;
+  const token = ++requestToken;
+  setLoading(path);
+  try {
+    const preview = await previewEntry(path);
+    if (token !== requestToken || !overlay || openPath !== path) return;
+    renderPreview(preview);
+  } catch (error) {
+    if (token !== requestToken || !content) return;
+    content.replaceChildren(textElement("div", "quick-look-error", String(error)));
+  }
+}
+
+function close() {
+  requestToken += 1;
+  openPath = null;
+  overlay?.remove();
+  overlay = null;
+  content = null;
+  title = null;
+  subtitle = null;
+}
+
+function open() {
+  const path = selectedPath();
+  if (!path || overlay) return;
+
+  overlay = element("div", "quick-look-backdrop");
+  const panel = element("section", "quick-look-panel");
+  const header = element("header", "quick-look-header");
+  const heading = element("div", "quick-look-heading");
+  title = element("div", "quick-look-title");
+  subtitle = element("div", "quick-look-subtitle");
+  heading.append(title, subtitle);
+  const closeButton = textElement("button", "quick-look-close", "Close");
+  closeButton.type = "button";
+  closeButton.addEventListener("click", close);
+  header.append(heading, closeButton);
+  content = element("div", "quick-look-content");
+  const footer = element("footer", "quick-look-footer");
+  footer.append(textElement("span", "", "Space to close"), textElement("span", "", "↑ ↓ to browse"));
+  panel.append(header, content, footer);
+  overlay.append(panel);
+  overlay.addEventListener("pointerdown", (event) => {
+    if (event.target === overlay) close();
+  });
+  document.body.append(overlay);
+  void refresh(path);
+}
+
+function scheduleSelectionRefresh() {
+  if (!overlay) return;
+  window.setTimeout(() => {
+    const path = selectedPath();
+    if (path && path !== openPath) void refresh(path);
+  }, 0);
+}
+
+function handleKeyDown(event: KeyboardEvent) {
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+  if (event.code === "Space") {
+    if (!overlay && !selectedPath()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (overlay) close(); else open();
+    return;
+  }
+  if (!overlay) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    close();
+  } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+    scheduleSelectionRefresh();
+  }
+}
+
+function handleClick(event: MouseEvent) {
+  if (overlay && event.target instanceof Element && event.target.closest(".file-row")) scheduleSelectionRefresh();
+}
+
+export function installQuickLook() {
+  window.addEventListener("keydown", handleKeyDown, true);
+  document.addEventListener("click", handleClick, true);
+  return () => {
+    window.removeEventListener("keydown", handleKeyDown, true);
+    document.removeEventListener("click", handleClick, true);
+    close();
+  };
+}

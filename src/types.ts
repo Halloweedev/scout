@@ -37,3 +37,32 @@ export interface ClipboardState {
   mode: "copy" | "move";
   paths: string[];
 }
+
+export type PreviewKind = "directory" | "image" | "text" | "markdown" | "unsupported";
+
+export interface PreviewMetadataItem {
+  label: string;
+  value: string;
+}
+
+export interface PreviewChild {
+  name: string;
+  kind: EntryKind;
+  size: number | null;
+}
+
+export interface PreviewData {
+  kind: PreviewKind;
+  name: string;
+  path: string;
+  extension: string | null;
+  size: number | null;
+  modifiedMs: number | null;
+  text: string | null;
+  truncated: boolean;
+  dataUrl: string | null;
+  width: number | null;
+  height: number | null;
+  metadata: PreviewMetadataItem[];
+  children: PreviewChild[];
+}
