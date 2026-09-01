@@ -2,9 +2,13 @@ import { invoke } from "@tauri-apps/api/core";
 import type { DirectoryListing, FsEntry, SpecialDirectories } from "../types";
 
 let activeDirectory: string | null = null;
+let activeListing: DirectoryListing | null = null;
 
-export const listDirectory = (path: string, showHidden: boolean) =>
-  invoke<DirectoryListing>("list_directory", { path, showHidden });
+export async function listDirectory(path: string, showHidden: boolean) {
+  const listing = await invoke<DirectoryListing>("list_directory", { path, showHidden });
+  activeListing = listing;
+  return listing;
+}
 
 export async function watchDirectory(path: string) {
   await invoke<void>("watch_directory", { path });
@@ -12,6 +16,7 @@ export async function watchDirectory(path: string) {
 }
 
 export const getActiveDirectory = () => activeDirectory;
+export const getActiveListing = () => activeListing;
 
 export const getSpecialDirectories = () =>
   invoke<SpecialDirectories>("special_directories");

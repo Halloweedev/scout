@@ -10,15 +10,15 @@
 - [x] Native trash
 - [x] Filesystem watcher with debounced active-directory refresh
 - [x] Hidden files
-- [x] Internal HTML5 drag/drop between folders (initial implementation)
+- [x] Cross-platform pointer drag/drop between folders
 - [x] Native OS file drops copy into the active folder
 - [x] Proper keyboard selection
 - [x] Context menus
 - [x] Tabs
 - [x] Open files with the system default application
 - [x] Create folders
-- [ ] Unified internal drag implementation for Windows native-drop mode
-- [ ] Undo/redo foundation for destructive operations
+
+M1's implementation baseline is complete. Platform QA and behavior hardening continue as Scout is exercised on macOS, Windows, and Linux.
 
 ## M2 — Previews
 
