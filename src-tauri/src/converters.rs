@@ -142,7 +142,7 @@ fn media_args(target: &str) -> Result<Vec<&'static str>, String> {
     }
 }
 
-fn convert_media_blocking(
+pub(crate) fn convert_media_blocking(
     path: String,
     destination: String,
     target: String,
@@ -178,7 +178,7 @@ fn convert_media_blocking(
     })
 }
 
-fn convert_pandoc_blocking(
+pub(crate) fn convert_pandoc_blocking(
     path: String,
     destination: String,
     target: String,
@@ -214,7 +214,7 @@ fn convert_pandoc_blocking(
     })
 }
 
-fn convert_libreoffice_blocking(
+pub(crate) fn convert_libreoffice_blocking(
     path: String,
     destination: String,
     target: String,

@@ -2,12 +2,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { enqueueAndWait, type OperationJob } from "./operation-queue";
 
 type ImageFormat = "jpg" | "png" | "webp";
+type ConverterEngine = "ffmpeg" | "pandoc" | "libreoffice";
 type AutomationAction =
   | { type: "move"; destination: string }
   | { type: "copy"; destination: string }
   | { type: "rename"; template: string }
   | { type: "archive"; destination: string }
-  | { type: "image"; destination: string; format: ImageFormat; maxWidth: number | null; maxHeight: number | null; quality: number | null };
+  | { type: "image"; destination: string; format: ImageFormat; maxWidth: number | null; maxHeight: number | null; quality: number | null }
+  | { type: "convert"; engine: ConverterEngine; destination: string; target: string };
 
 interface AutomationRule {
   id: number;
@@ -63,7 +65,15 @@ interface DraftRule {
   imageMaxWidth: string;
   imageMaxHeight: string;
   imageQuality: string;
+  converterEngine: ConverterEngine;
+  converterTarget: string;
 }
+
+const CONVERTER_TARGETS: Record<ConverterEngine, Array<[string, string]>> = {
+  ffmpeg: [["mp4", "MP4"], ["webm", "WebM"], ["mp3", "MP3"], ["m4a", "M4A"], ["wav", "WAV"], ["gif", "GIF"]],
+  pandoc: [["html", "HTML"], ["docx", "DOCX"], ["odt", "ODT"], ["rtf", "RTF"], ["epub", "EPUB"], ["md", "Markdown"], ["txt", "Text"]],
+  libreoffice: [["pdf", "PDF"], ["docx", "DOCX"], ["odt", "ODT"], ["xlsx", "XLSX"], ["csv", "CSV"], ["pptx", "PPTX"]],
+};
 
 let observer: MutationObserver | null = null;
 let overlay: HTMLDivElement | null = null;
@@ -111,6 +121,8 @@ function newDraft(): DraftRule {
     imageMaxWidth: "",
     imageMaxHeight: "",
     imageQuality: "88",
+    converterEngine: "ffmpeg",
+    converterTarget: "mp4",
   };
 }
 
@@ -136,6 +148,8 @@ function draftFromRule(rule: AutomationRule): DraftRule {
     imageMaxWidth: rule.action.type === "image" && rule.action.maxWidth != null ? String(rule.action.maxWidth) : "",
     imageMaxHeight: rule.action.type === "image" && rule.action.maxHeight != null ? String(rule.action.maxHeight) : "",
     imageQuality: rule.action.type === "image" && rule.action.quality != null ? String(rule.action.quality) : "88",
+    converterEngine: rule.action.type === "convert" ? rule.action.engine : "ffmpeg",
+    converterTarget: rule.action.type === "convert" ? rule.action.target : "mp4",
   };
 }
 
@@ -171,6 +185,13 @@ function payloadFromDraft(current: DraftRule) {
       maxWidth: positiveInteger(current.imageMaxWidth),
       maxHeight: positiveInteger(current.imageMaxHeight),
       quality: imageQuality(current.imageQuality),
+    };
+  } else if (current.actionType === "convert") {
+    action = {
+      type: "convert",
+      engine: current.converterEngine,
+      destination: current.actionValue,
+      target: current.converterTarget,
     };
   } else {
     action = { type: current.actionType, destination: current.actionValue };
@@ -337,12 +358,12 @@ function renderEditor(container: HTMLElement) {
   const actionSelect = selectField(
     "Action",
     current.actionType,
-    [["move", "Move to folder"], ["copy", "Copy to folder"], ["rename", "Rename"], ["archive", "Archive to ZIP"], ["image", "Optimize / convert image"]],
+    [["move", "Move to folder"], ["copy", "Copy to folder"], ["rename", "Rename"], ["archive", "Archive to ZIP"], ["image", "Optimize / convert image"], ["convert", "Convert media / document"]],
     (value) => {
       current.actionType = value as DraftRule["actionType"];
       if (current.actionType === "rename") current.actionValue = "{stem}-sorted.{ext}";
       else current.actionValue = "";
-      if (current.actionType === "image") current.kind = "file";
+      if (current.actionType === "image" || current.actionType === "convert") current.kind = "file";
       renderManager();
     },
   );
@@ -366,6 +387,19 @@ function renderEditor(container: HTMLElement) {
     form.append(imageGrid);
   }
 
+  if (current.actionType === "convert") {
+    const conversionGrid = element("div", "automation-grid");
+    conversionGrid.append(
+      selectField("Engine", current.converterEngine, [["ffmpeg", "FFmpeg"], ["pandoc", "Pandoc"], ["libreoffice", "LibreOffice"]], (value) => {
+        current.converterEngine = value as ConverterEngine;
+        current.converterTarget = CONVERTER_TARGETS[current.converterEngine][0][0];
+        renderManager();
+      }),
+      selectField("Output format", current.converterTarget, CONVERTER_TARGETS[current.converterEngine], (value) => { current.converterTarget = value; }),
+    );
+    form.append(conversionGrid);
+  }
+
   const hint = element("div", "automation-hint");
   if (current.actionType === "rename") {
     hint.textContent = "Rename placeholders: {name}, {stem}, {ext}, {n}.";
@@ -373,6 +407,8 @@ function renderEditor(container: HTMLElement) {
     hint.textContent = "Image rules require files. Outputs are created outside the watched folder through Scout’s cancellable image engine.";
   } else if (current.actionType === "archive") {
     hint.textContent = "Each matching item becomes its own ZIP in the destination folder. The destination must be outside the watched tree.";
+  } else if (current.actionType === "convert") {
+    hint.textContent = `${current.converterEngine === "ffmpeg" ? "FFmpeg" : current.converterEngine === "pandoc" ? "Pandoc" : "LibreOffice"} must be installed locally. Scout kills the process if the Operations job is cancelled.`;
   } else {
     hint.textContent = "For safety, destinations inside the watched folder are blocked to prevent self-trigger loops.";
   }

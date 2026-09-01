@@ -1,4 +1,5 @@
 use crate::{
+    converters,
     fs as scout_fs,
     history::HistoryState,
     images::{self, ImageTransformOptions},
@@ -35,6 +36,11 @@ pub enum AutomationAction {
         max_width: Option<u32>,
         max_height: Option<u32>,
         quality: Option<u8>,
+    },
+    Convert {
+        engine: String,
+        destination: String,
+        target: String,
     },
 }
 
@@ -216,6 +222,21 @@ fn validate_output_destination(folder: &Path, destination: &mut String) -> Resul
     Ok(())
 }
 
+fn normalize_conversion(engine: &mut String, target: &mut String) -> Result<(), String> {
+    *engine = engine.trim().to_ascii_lowercase();
+    *target = target.trim().trim_start_matches('.').to_ascii_lowercase();
+    let valid = match engine.as_str() {
+        "ffmpeg" => ["mp3", "m4a", "wav", "mp4", "webm", "gif"].contains(&target.as_str()),
+        "pandoc" => ["md", "html", "docx", "odt", "rtf", "epub", "txt"].contains(&target.as_str()),
+        "libreoffice" => ["pdf", "docx", "odt", "xlsx", "csv", "pptx"].contains(&target.as_str()),
+        _ => return Err("Conversion engine must be FFmpeg, Pandoc, or LibreOffice".into()),
+    };
+    if !valid {
+        return Err(format!("Unsupported {engine} conversion target: {target}"));
+    }
+    Ok(())
+}
+
 fn validate_rule_input(mut input: AutomationRuleInput) -> Result<AutomationRuleInput, String> {
     input.name = input.name.trim().to_string();
     if input.name.is_empty() {
@@ -277,6 +298,17 @@ fn validate_rule_input(mut input: AutomationRuleInput) -> Result<AutomationRuleI
             if quality.is_some_and(|value| value == 0 || value > 100) {
                 return Err("JPEG quality must be between 1 and 100".into());
             }
+        }
+        AutomationAction::Convert {
+            engine,
+            destination,
+            target,
+        } => {
+            if input.kind != "file" {
+                return Err("Conversion automation rules must match files".into());
+            }
+            validate_output_destination(&folder, destination)?;
+            normalize_conversion(engine, target)?;
         }
     }
     Ok(input)
@@ -473,6 +505,37 @@ fn apply_matches(
                     Some(context),
                 )?;
             }
+            AutomationAction::Convert {
+                engine,
+                destination,
+                target,
+            } => match engine.as_str() {
+                "ffmpeg" => {
+                    converters::convert_media_blocking(
+                        item.path.clone(),
+                        destination.clone(),
+                        target.clone(),
+                        Some(context),
+                    )?;
+                }
+                "pandoc" => {
+                    converters::convert_pandoc_blocking(
+                        item.path.clone(),
+                        destination.clone(),
+                        target.clone(),
+                        Some(context),
+                    )?;
+                }
+                "libreoffice" => {
+                    converters::convert_libreoffice_blocking(
+                        item.path.clone(),
+                        destination.clone(),
+                        target.clone(),
+                        Some(context),
+                    )?;
+                }
+                _ => return Err("Unknown automation conversion engine".into()),
+            },
         }
         affected += 1;
         context.progress(
