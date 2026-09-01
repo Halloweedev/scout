@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { openEntry } from "./fs";
 
 const INDEX_VERSION = 2;
+const SAVED_SEARCHES_KEY = "scout.saved-searches.v1";
 
 interface IndexStatus {
   count: number;
@@ -20,6 +21,12 @@ interface SearchResult {
   matchContext: string | null;
 }
 
+interface SavedSearch {
+  id: string;
+  query: string;
+  createdAt: number;
+}
+
 const indexStatus = () => invoke<IndexStatus>("index_status");
 const rebuildIndex = (root: string | null = null) => invoke<IndexStatus>("rebuild_index", { root });
 const searchIndex = (query: string, limit = 40) => invoke<SearchResult[]>("search_index", { query, limit });
@@ -28,12 +35,31 @@ const recordIndexOpen = (path: string) => invoke<void>("record_index_open", { pa
 let overlay: HTMLDivElement | null = null;
 let input: HTMLInputElement | null = null;
 let resultsNode: HTMLDivElement | null = null;
+let savedNode: HTMLDivElement | null = null;
+let saveButton: HTMLButtonElement | null = null;
 let footerStatus: HTMLSpanElement | null = null;
 let results: SearchResult[] = [];
+let savedSearches: SavedSearch[] = readSavedSearches();
 let selectedIndex = 0;
 let searchToken = 0;
 let searchTimer: number | undefined;
 let indexingPromise: Promise<IndexStatus> | null = null;
+
+function readSavedSearches(): SavedSearch[] {
+  try {
+    const raw = localStorage.getItem(SAVED_SEARCHES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as SavedSearch[];
+    return Array.isArray(parsed) ? parsed.filter((item) => !!item?.id && typeof item.query === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistSavedSearches() {
+  localStorage.setItem(SAVED_SEARCHES_KEY, JSON.stringify(savedSearches));
+  window.dispatchEvent(new CustomEvent("scout:saved-searches-changed", { detail: { searches: savedSearches } }));
+}
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string) {
   const node = document.createElement(tag);
@@ -63,6 +89,62 @@ function iconFor(result: SearchResult) {
   const glyph = element("span", `global-search-glyph ${result.kind}`);
   glyph.setAttribute("aria-hidden", "true");
   return glyph;
+}
+
+function updateSaveButton() {
+  if (!saveButton || !input) return;
+  const query = input.value.trim();
+  saveButton.disabled = !query || savedSearches.some((item) => item.query.toLocaleLowerCase() === query.toLocaleLowerCase());
+}
+
+function renderSavedSearches() {
+  if (!savedNode) return;
+  savedNode.replaceChildren();
+  const query = input?.value.trim() ?? "";
+  savedNode.hidden = !!query || savedSearches.length === 0;
+  if (savedNode.hidden) return;
+
+  const label = element("div", "global-search-saved-label");
+  label.textContent = "Saved searches";
+  savedNode.append(label);
+
+  for (const saved of savedSearches) {
+    const row = element("div", "global-search-saved-row");
+    const open = element("button", "global-search-saved-open");
+    open.type = "button";
+    open.textContent = saved.query;
+    open.addEventListener("click", () => {
+      if (!input) return;
+      input.value = saved.query;
+      input.focus();
+      renderSavedSearches();
+      updateSaveButton();
+      void runSearch(saved.query);
+    });
+    const remove = element("button", "global-search-saved-remove");
+    remove.type = "button";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", () => {
+      savedSearches = savedSearches.filter((item) => item.id !== saved.id);
+      persistSavedSearches();
+      renderSavedSearches();
+      updateSaveButton();
+    });
+    row.append(open, remove);
+    savedNode.append(row);
+  }
+}
+
+function saveCurrentSearch() {
+  const query = input?.value.trim();
+  if (!query || savedSearches.some((item) => item.query.toLocaleLowerCase() === query.toLocaleLowerCase())) return;
+  savedSearches = [
+    { id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`, query, createdAt: Date.now() },
+    ...savedSearches,
+  ].slice(0, 24);
+  persistSavedSearches();
+  updateSaveButton();
+  setStatus("Search saved locally");
 }
 
 function renderResults() {
@@ -130,6 +212,8 @@ async function runSearch(query = input?.value ?? "") {
 
 function scheduleSearch() {
   if (searchTimer !== undefined) window.clearTimeout(searchTimer);
+  renderSavedSearches();
+  updateSaveButton();
   searchTimer = window.setTimeout(() => {
     searchTimer = undefined;
     void runSearch();
@@ -162,13 +246,19 @@ function closePalette() {
   overlay = null;
   input = null;
   resultsNode = null;
+  savedNode = null;
+  saveButton = null;
   footerStatus = null;
   results = [];
   selectedIndex = 0;
 }
 
-function openPalette() {
+function openPalette(initialQuery = "") {
   if (overlay) {
+    if (input && initialQuery) {
+      input.value = initialQuery;
+      scheduleSearch();
+    }
     input?.focus();
     return;
   }
@@ -183,9 +273,15 @@ function openPalette() {
   input.placeholder = "Search names, paths and file contents…";
   input.autocomplete = "off";
   input.spellcheck = false;
+  input.value = initialQuery;
   input.addEventListener("input", scheduleSearch);
-  inputRow.append(mark, input);
+  saveButton = element("button", "global-search-save");
+  saveButton.type = "button";
+  saveButton.textContent = "Save";
+  saveButton.addEventListener("click", saveCurrentSearch);
+  inputRow.append(mark, input, saveButton);
 
+  savedNode = element("div", "global-search-saved");
   resultsNode = element("div", "global-search-results");
 
   const footer = element("footer", "global-search-footer");
@@ -195,14 +291,21 @@ function openPalette() {
   hints.textContent = "Arrow keys to navigate · Enter to open · Esc to close";
   footer.append(footerStatus, hints);
 
-  palette.append(inputRow, resultsNode, footer);
+  palette.append(inputRow, savedNode, resultsNode, footer);
   overlay.append(palette);
   overlay.addEventListener("pointerdown", (event) => {
     if (event.target === overlay) closePalette();
   });
   document.body.append(overlay);
+  renderSavedSearches();
+  updateSaveButton();
   input.focus();
-  void runSearch("");
+  void runSearch(initialQuery);
+}
+
+function handleOpenSavedSearch(event: Event) {
+  const query = (event as CustomEvent<{ query?: string }>).detail?.query;
+  if (query) openPalette(query);
 }
 
 function handleKeyDown(event: KeyboardEvent) {
@@ -236,9 +339,11 @@ function handleKeyDown(event: KeyboardEvent) {
 
 export function installGlobalSearch() {
   window.addEventListener("keydown", handleKeyDown, true);
+  window.addEventListener("scout:open-saved-search", handleOpenSavedSearch);
   void ensureIndex().catch(() => {});
   return () => {
     window.removeEventListener("keydown", handleKeyDown, true);
+    window.removeEventListener("scout:open-saved-search", handleOpenSavedSearch);
     closePalette();
   };
 }
