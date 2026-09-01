@@ -9,6 +9,7 @@ import { installImageThumbnails } from "./lib/thumbnails";
 import { installImageTools } from "./lib/image-tools";
 import { installInternalPointerDrag } from "./lib/internal-drag";
 import { installNativeFileDrop } from "./lib/native-drop";
+import { installOperationQueue } from "./lib/operation-queue";
 import { installPdfTools } from "./lib/pdf-tools";
 import { installPortal } from "./lib/portal";
 import { installQuickLook } from "./lib/quick-look";
@@ -31,6 +32,7 @@ import "./portal.css";
 import "./converters.css";
 import "./footprints.css";
 import "./pdf-tools.css";
+import "./operation-queue.css";
 
 const root = document.getElementById("root");
 
@@ -53,6 +55,7 @@ const convertersCleanup = installConverters();
 const terminalActionsCleanup = installTerminalActions();
 const footprintsCleanup = installFootprints();
 const pdfToolsCleanup = installPdfTools();
+const operationQueueCleanup = installOperationQueue();
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
@@ -70,6 +73,7 @@ if (import.meta.hot) {
     terminalActionsCleanup();
     footprintsCleanup();
     pdfToolsCleanup();
+    operationQueueCleanup();
     void nativeDropCleanup.then((cleanup) => cleanup());
   });
 }
