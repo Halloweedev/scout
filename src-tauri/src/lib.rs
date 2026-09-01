@@ -5,6 +5,7 @@ mod fs;
 mod images;
 mod preview;
 mod search;
+mod similar;
 mod utilities;
 mod watch;
 
@@ -32,6 +33,7 @@ pub fn run() {
             search::rebuild_index,
             search::search_index,
             search::record_index_open,
+            similar::find_similar_photos,
             utilities::checksum_entries,
             utilities::preview_batch_rename,
             utilities::apply_batch_rename,

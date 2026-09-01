@@ -8,6 +8,7 @@ import { installImageTools } from "./lib/image-tools";
 import { installInternalPointerDrag } from "./lib/internal-drag";
 import { installNativeFileDrop } from "./lib/native-drop";
 import { installQuickLook } from "./lib/quick-look";
+import { installSimilarPhotos } from "./lib/similar-photos";
 import { installUtilities } from "./lib/utilities";
 import "./styles.css";
 import "./native-drop.css";
@@ -20,6 +21,7 @@ import "./utilities.css";
 import "./duplicates.css";
 import "./disk-map.css";
 import "./image-tools.css";
+import "./similar-photos.css";
 
 const root = document.getElementById("root");
 
@@ -36,6 +38,7 @@ const utilitiesCleanup = installUtilities();
 const duplicateFinderCleanup = installDuplicateFinder();
 const diskMapCleanup = installDiskMap();
 const imageToolsCleanup = installImageTools();
+const similarPhotosCleanup = installSimilarPhotos();
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
@@ -47,6 +50,7 @@ if (import.meta.hot) {
     duplicateFinderCleanup();
     diskMapCleanup();
     imageToolsCleanup();
+    similarPhotosCleanup();
     void nativeDropCleanup.then((cleanup) => cleanup());
   });
 }
