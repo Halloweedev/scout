@@ -50,19 +50,17 @@ function detailRow(label: string, value: string) {
   return row;
 }
 
+function metadataRow(item: PreviewMetadataItem) {
+  return detailRow(item.label, item.value);
+}
+
 function metadataPanel(preview: PreviewData) {
   const panel = element("aside", "quick-look-metadata");
-  if (preview.width && preview.height) {
-    panel.append(detailRow("Dimensions", `${preview.width} × ${preview.height}`));
-  }
+  if (preview.width && preview.height) panel.append(detailRow("Dimensions", `${preview.width} × ${preview.height}`));
   if (preview.size !== null) panel.append(detailRow("Size", formatBytes(preview.size)));
   if (preview.extension) panel.append(detailRow("Type", preview.extension.toUpperCase()));
   for (const item of preview.metadata) panel.append(metadataRow(item));
   return panel;
-}
-
-function metadataRow(item: PreviewMetadataItem) {
-  return detailRow(item.label, item.value);
 }
 
 function folderRow(child: PreviewChild) {
@@ -106,6 +104,97 @@ function renderText(preview: PreviewData) {
   return wrapper;
 }
 
+function renderMarkdown(preview: PreviewData) {
+  const wrapper = element("div", "quick-look-markdown-layout");
+  const article = element("article", "quick-look-markdown");
+  const lines = (preview.text ?? "").split(/\r?\n/);
+  let codeBlock: HTMLPreElement | null = null;
+
+  for (const line of lines) {
+    if (line.trimStart().startsWith("```")) {
+      if (codeBlock) {
+        article.append(codeBlock);
+        codeBlock = null;
+      } else {
+        codeBlock = element("pre", "quick-look-markdown-code");
+      }
+      continue;
+    }
+    if (codeBlock) {
+      codeBlock.textContent += `${line}\n`;
+      continue;
+    }
+    if (!line.trim()) {
+      article.append(element("div", "quick-look-markdown-space"));
+      continue;
+    }
+
+    const heading = /^(#{1,4})\s+(.+)$/.exec(line);
+    if (heading) {
+      const level = heading[1].length;
+      const node = document.createElement(`h${level}`) as HTMLHeadingElement;
+      node.textContent = heading[2];
+      article.append(node);
+      continue;
+    }
+    if (/^\s*([-*_])\1\1+\s*$/.test(line)) {
+      article.append(element("hr"));
+      continue;
+    }
+    const bullet = /^\s*[-*+]\s+(.+)$/.exec(line);
+    if (bullet) {
+      article.append(textElement("div", "quick-look-markdown-list-item", `• ${bullet[1]}`));
+      continue;
+    }
+    const numbered = /^\s*(\d+)\.\s+(.+)$/.exec(line);
+    if (numbered) {
+      article.append(textElement("div", "quick-look-markdown-list-item", `${numbered[1]}. ${numbered[2]}`));
+      continue;
+    }
+    const quote = /^\s*>\s?(.*)$/.exec(line);
+    if (quote) {
+      article.append(textElement("blockquote", "", quote[1]));
+      continue;
+    }
+    article.append(textElement("p", "", line));
+  }
+
+  if (codeBlock) article.append(codeBlock);
+  wrapper.append(article);
+  if (preview.truncated) wrapper.append(textElement("div", "quick-look-truncated", "Preview truncated at 512 KB."));
+  return wrapper;
+}
+
+function binaryUnavailable(preview: PreviewData, label: string) {
+  const wrapper = element("div", "quick-look-unsupported");
+  wrapper.append(textElement("div", "quick-look-unsupported-title", `${label} preview unavailable`));
+  wrapper.append(textElement("div", "quick-look-unsupported-copy", preview.metadata[0]?.value ?? "This file cannot be previewed inline."));
+  return wrapper;
+}
+
+function renderPdf(preview: PreviewData) {
+  if (!preview.dataUrl) return binaryUnavailable(preview, "PDF");
+  const wrapper = element("div", "quick-look-pdf-layout");
+  const frame = element("iframe", "quick-look-pdf");
+  frame.src = preview.dataUrl;
+  frame.title = preview.name;
+  wrapper.append(frame);
+  return wrapper;
+}
+
+function renderMedia(preview: PreviewData, kind: "audio" | "video") {
+  if (!preview.dataUrl) return binaryUnavailable(preview, kind === "audio" ? "Audio" : "Video");
+  const wrapper = element("div", `quick-look-media-layout ${kind}`);
+  const media = document.createElement(kind);
+  media.className = "quick-look-media";
+  media.controls = true;
+  media.preload = "metadata";
+  media.src = preview.dataUrl;
+  if (kind === "video") (media as HTMLVideoElement).playsInline = true;
+  wrapper.append(media, metadataPanel(preview));
+  return wrapper;
+}
+
 function renderUnsupported(preview: PreviewData) {
   const wrapper = element("div", "quick-look-unsupported");
   wrapper.append(textElement("div", "quick-look-unsupported-title", "Preview not available yet"));
@@ -128,9 +217,15 @@ function renderPreview(preview: PreviewData) {
     ? renderDirectory(preview)
     : preview.kind === "image"
       ? renderImage(preview)
-      : preview.kind === "text" || preview.kind === "markdown"
-        ? renderText(preview)
-        : renderUnsupported(preview);
+      : preview.kind === "markdown"
+        ? renderMarkdown(preview)
+        : preview.kind === "text"
+          ? renderText(preview)
+          : preview.kind === "pdf"
+            ? renderPdf(preview)
+            : preview.kind === "audio" || preview.kind === "video"
+              ? renderMedia(preview, preview.kind)
+              : renderUnsupported(preview);
   content.replaceChildren(node);
 }
 

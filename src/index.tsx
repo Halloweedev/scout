@@ -8,6 +8,7 @@ import "./styles.css";
 import "./native-drop.css";
 import "./internal-drag.css";
 import "./quick-look.css";
+import "./rich-previews.css";
 import "./thumbnails.css";
 
 const root = document.getElementById("root");

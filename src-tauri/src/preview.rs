@@ -9,6 +9,7 @@ use std::{
 };
 
 const TEXT_PREVIEW_LIMIT: u64 = 512 * 1024;
+const BINARY_PREVIEW_LIMIT: u64 = 24 * 1024 * 1024;
 const DIRECTORY_PREVIEW_LIMIT: usize = 40;
 const EXIF_PREVIEW_LIMIT: usize = 24;
 const IMAGE_PREVIEW_WIDTH: u32 = 1400;
@@ -159,6 +160,33 @@ fn is_text_extension(extension: Option<&str>) -> bool {
     ) || is_markdown_extension(extension)
 }
 
+fn pdf_mime(extension: Option<&str>) -> Option<&'static str> {
+    matches!(extension, Some("pdf")).then_some("application/pdf")
+}
+
+fn audio_mime(extension: Option<&str>) -> Option<&'static str> {
+    match extension {
+        Some("mp3") => Some("audio/mpeg"),
+        Some("wav") => Some("audio/wav"),
+        Some("m4a") => Some("audio/mp4"),
+        Some("aac") => Some("audio/aac"),
+        Some("flac") => Some("audio/flac"),
+        Some("ogg") => Some("audio/ogg"),
+        Some("opus") => Some("audio/ogg"),
+        _ => None,
+    }
+}
+
+fn video_mime(extension: Option<&str>) -> Option<&'static str> {
+    match extension {
+        Some("mp4" | "m4v") => Some("video/mp4"),
+        Some("webm") => Some("video/webm"),
+        Some("mov") => Some("video/quicktime"),
+        Some("ogv") => Some("video/ogg"),
+        _ => None,
+    }
+}
+
 fn truncate_value(value: String, max_chars: usize) -> String {
     if value.chars().count() <= max_chars {
         return value;
@@ -226,6 +254,26 @@ fn preview_text(path: &Path, metadata: &fs::Metadata, markdown: bool) -> Result<
     let mut preview = base_preview(path, metadata, if markdown { "markdown" } else { "text" });
     preview.text = Some(String::from_utf8_lossy(&bytes).into_owned());
     preview.truncated = truncated;
+    Ok(preview)
+}
+
+fn preview_binary(
+    path: &Path,
+    metadata: &fs::Metadata,
+    kind: &str,
+    mime: &str,
+) -> Result<PreviewData, String> {
+    let mut preview = base_preview(path, metadata, kind);
+    if metadata.len() > BINARY_PREVIEW_LIMIT {
+        preview.metadata.push(PreviewMetadataItem {
+            label: "Preview".to_string(),
+            value: "File is larger than the 24 MB inline preview limit.".to_string(),
+        });
+        return Ok(preview);
+    }
+
+    let bytes = fs::read(path).map_err(|error| error.to_string())?;
+    preview.data_url = Some(format!("data:{mime};base64,{}", STANDARD.encode(bytes)));
     Ok(preview)
 }
 
@@ -304,6 +352,15 @@ pub fn preview_entry(path: String) -> Result<PreviewData, String> {
     }
     if is_text_extension(extension.as_deref()) {
         return preview_text(&path, &metadata, is_markdown_extension(extension.as_deref()));
+    }
+    if let Some(mime) = pdf_mime(extension.as_deref()) {
+        return preview_binary(&path, &metadata, "pdf", mime);
+    }
+    if let Some(mime) = audio_mime(extension.as_deref()) {
+        return preview_binary(&path, &metadata, "audio", mime);
+    }
+    if let Some(mime) = video_mime(extension.as_deref()) {
+        return preview_binary(&path, &metadata, "video", mime);
     }
 
     Ok(base_preview(&path, &metadata, "unsupported"))
