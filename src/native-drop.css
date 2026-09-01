@@ -1,0 +1,42 @@
+.file-area::before,
+.file-area::after {
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.native-file-drop .file-area::before {
+  content: "";
+  position: fixed;
+  z-index: 8;
+  inset: 103px 14px 42px 234px;
+  border: 1px solid #4b4b50;
+  border-radius: 10px;
+  background: rgba(24, 24, 26, 0.78);
+  backdrop-filter: blur(18px);
+  opacity: 1;
+}
+
+.native-file-drop .file-area::after {
+  content: "Copy to this folder";
+  position: fixed;
+  z-index: 9;
+  left: calc(50% + 110px);
+  top: 50%;
+  transform: translate(-50%, -50%);
+  color: #d9d9dc;
+  font-size: 13px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  opacity: 1;
+}
+
+@media (max-width: 980px) {
+  .native-file-drop .file-area::before {
+    left: 204px;
+  }
+
+  .native-file-drop .file-area::after {
+    left: calc(50% + 95px);
+  }
+}

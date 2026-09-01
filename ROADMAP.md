@@ -10,13 +10,14 @@
 - [x] Native trash
 - [x] Filesystem watcher with debounced active-directory refresh
 - [x] Hidden files
-- [x] Internal drag/drop between folders
+- [x] Internal HTML5 drag/drop between folders (initial implementation)
+- [x] Native OS file drops copy into the active folder
 - [x] Proper keyboard selection
 - [x] Context menus
 - [x] Tabs
 - [x] Open files with the system default application
 - [x] Create folders
-- [ ] External OS drag/drop hardening
+- [ ] Unified internal drag implementation for Windows native-drop mode
 - [ ] Undo/redo foundation for destructive operations
 
 ## M2 — Previews
