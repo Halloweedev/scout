@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { enqueueAndWait, type OperationJob } from "./operation-queue";
 
 interface ImageTransformResult {
   source: string;
@@ -100,12 +101,12 @@ async function openImageTools() {
   );
 
   const note = element("div", "rename-hint");
-  note.textContent = "Leave width and height empty to preserve dimensions. PNG and WebP are written losslessly; quality applies to JPEG.";
+  note.textContent = "Leave width and height empty to preserve dimensions. PNG and WebP are written losslessly; quality applies to JPEG. Long batches appear in Operations and can be cancelled.";
   const resultNode = element("div", "image-tools-results");
   const actions = element("div", "utility-actions");
   const cancel = element("button", "utility-secondary-button");
   cancel.type = "button";
-  cancel.textContent = "Cancel";
+  cancel.textContent = "Close";
   cancel.addEventListener("click", close);
   const convert = element("button", "utility-primary-button");
   convert.type = "button";
@@ -129,19 +130,28 @@ async function openImageTools() {
 
   convert.addEventListener("click", async () => {
     convert.disabled = true;
-    convert.textContent = "Converting…";
-    resultNode.textContent = "";
+    convert.textContent = "Queued…";
+    resultNode.classList.remove("utility-error");
+    resultNode.textContent = "Added to Operations…";
     try {
-      const results = await invoke<ImageTransformResult[]>("transform_images", {
-        paths,
-        destination,
-        options: {
-          format: formatSelect.value,
-          maxWidth: optionalDimension(widthInput),
-          maxHeight: optionalDimension(heightInput),
-          quality: Math.max(1, Math.min(100, Number(qualityInput.value) || 88)),
+      const results = await enqueueAndWait<ImageTransformResult[]>(
+        "enqueue_image_transform",
+        {
+          paths,
+          destination,
+          options: {
+            format: formatSelect.value,
+            maxWidth: optionalDimension(widthInput),
+            maxHeight: optionalDimension(heightInput),
+            quality: Math.max(1, Math.min(100, Number(qualityInput.value) || 88)),
+          },
         },
-      });
+        (job: OperationJob<ImageTransformResult[]>) => {
+          if (!overlay) return;
+          convert.textContent = job.status === "queued" ? "Queued…" : "Converting…";
+          resultNode.textContent = job.detail ?? "Converting images…";
+        },
+      );
       if (!overlay) return;
       resultNode.replaceChildren();
       for (const result of results) {
@@ -155,6 +165,7 @@ async function openImageTools() {
       }
       convert.textContent = "Done";
     } catch (error) {
+      if (!overlay) return;
       resultNode.textContent = String(error);
       resultNode.classList.add("utility-error");
       convert.disabled = false;

@@ -60,6 +60,7 @@ pub fn run() {
             fs::redo_last_operation,
             history::operation_history,
             images::transform_images,
+            images::enqueue_image_transform,
             pdf::pdf_info,
             pdf::extract_pdf_pages,
             pdf::split_pdf_pages,

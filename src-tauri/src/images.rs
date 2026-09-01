@@ -1,14 +1,19 @@
+use crate::queue::{self, JobContext};
 use image::{codecs::jpeg::JpegEncoder, DynamicImage, ExtendedColorType, GenericImageView, ImageFormat};
 use serde::{Deserialize, Serialize};
-use std::{fs::File, path::{Path, PathBuf}};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+};
+use tauri::AppHandle;
 
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageTransformOptions {
-    format: String,
-    max_width: Option<u32>,
-    max_height: Option<u32>,
-    quality: Option<u8>,
+    pub(crate) format: String,
+    pub(crate) max_width: Option<u32>,
+    pub(crate) max_height: Option<u32>,
+    pub(crate) quality: Option<u8>,
 }
 
 #[derive(Serialize)]
@@ -67,7 +72,12 @@ fn write_image(image: &DynamicImage, output: &Path, format: ImageFormat, quality
     }
 }
 
-fn transform(paths: Vec<String>, destination: String, options: ImageTransformOptions) -> Result<Vec<ImageTransformResult>, String> {
+pub(crate) fn transform_blocking(
+    paths: Vec<String>,
+    destination: String,
+    options: ImageTransformOptions,
+    context: Option<&JobContext>,
+) -> Result<Vec<ImageTransformResult>, String> {
     if paths.is_empty() {
         return Err("Choose at least one image".into());
     }
@@ -77,15 +87,28 @@ fn transform(paths: Vec<String>, destination: String, options: ImageTransformOpt
     }
     let (extension, format) = normalized_format(&options.format)?;
     let quality = options.quality.unwrap_or(88).clamp(1, 100);
-    let mut results = Vec::with_capacity(paths.len());
+    let total = paths.len();
+    let mut results = Vec::with_capacity(total);
 
-    for raw_path in paths {
+    for (index, raw_path) in paths.into_iter().enumerate() {
+        if context.is_some_and(JobContext::cancelled) {
+            return Err("Image conversion cancelled".into());
+        }
+        if let Some(context) = context {
+            context.progress(
+                Some(index as f64 / total as f64),
+                Some(format!("Converting {}/{} images", index + 1, total)),
+            );
+        }
         let source = PathBuf::from(&raw_path);
         if !source.is_file() {
             return Err(format!("Image source is not a file: {}", source.display()));
         }
         let image = image::open(&source)
             .map_err(|error| format!("Could not decode {}: {error}", source.display()))?;
+        if context.is_some_and(JobContext::cancelled) {
+            return Err("Image conversion cancelled".into());
+        }
         let image = resize_image(image, options.max_width, options.max_height);
         let stem = source
             .file_stem()
@@ -95,6 +118,10 @@ fn transform(paths: Vec<String>, destination: String, options: ImageTransformOpt
         if let Err(error) = write_image(&image, &output, format, quality) {
             let _ = std::fs::remove_file(&output);
             return Err(format!("Could not write {}: {error}", output.display()));
+        }
+        if context.is_some_and(JobContext::cancelled) {
+            let _ = std::fs::remove_file(&output);
+            return Err("Image conversion cancelled".into());
         }
         let (width, height) = image.dimensions();
         results.push(ImageTransformResult {
@@ -106,6 +133,9 @@ fn transform(paths: Vec<String>, destination: String, options: ImageTransformOpt
         });
     }
 
+    if let Some(context) = context {
+        context.progress(Some(1.0), Some(format!("Converted {} images", results.len())));
+    }
     Ok(results)
 }
 
@@ -115,7 +145,31 @@ pub async fn transform_images(
     destination: String,
     options: ImageTransformOptions,
 ) -> Result<Vec<ImageTransformResult>, String> {
-    tauri::async_runtime::spawn_blocking(move || transform(paths, destination, options))
+    tauri::async_runtime::spawn_blocking(move || transform_blocking(paths, destination, options, None))
         .await
         .map_err(|error| format!("Image conversion task failed: {error}"))?
+}
+
+#[tauri::command]
+pub fn enqueue_image_transform(
+    app: AppHandle,
+    paths: Vec<String>,
+    destination: String,
+    options: ImageTransformOptions,
+) -> Result<u64, String> {
+    if paths.is_empty() {
+        return Err("Choose at least one image".into());
+    }
+    let label = if paths.len() == 1 {
+        let name = Path::new(&paths[0])
+            .file_name()
+            .map(|value| value.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "image".to_string());
+        format!("Convert image · {name}")
+    } else {
+        format!("Convert {} images", paths.len())
+    };
+    Ok(queue::enqueue_blocking(app, "image", label, move |context| {
+        transform_blocking(paths, destination, options, Some(&context))
+    }))
 }
