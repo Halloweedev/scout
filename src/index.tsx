@@ -11,6 +11,7 @@ import { installNativeFileDrop } from "./lib/native-drop";
 import { installPortal } from "./lib/portal";
 import { installQuickLook } from "./lib/quick-look";
 import { installSimilarPhotos } from "./lib/similar-photos";
+import { installTerminalActions } from "./lib/terminal-actions";
 import { installUtilities } from "./lib/utilities";
 import "./styles.css";
 import "./native-drop.css";
@@ -45,6 +46,7 @@ const imageToolsCleanup = installImageTools();
 const similarPhotosCleanup = installSimilarPhotos();
 const portalCleanup = installPortal();
 const convertersCleanup = installConverters();
+const terminalActionsCleanup = installTerminalActions();
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
@@ -59,6 +61,7 @@ if (import.meta.hot) {
     similarPhotosCleanup();
     portalCleanup();
     convertersCleanup();
+    terminalActionsCleanup();
     void nativeDropCleanup.then((cleanup) => cleanup());
   });
 }
