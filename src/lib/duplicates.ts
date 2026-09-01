@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { cancelOperation, enqueueAndWait } from "./operation-queue";
 
 interface DuplicateGroup {
   size: number;
@@ -17,6 +17,7 @@ interface DuplicateScan {
 
 let observer: MutationObserver | null = null;
 let overlay: HTMLDivElement | null = null;
+let activeJob: number | null = null;
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string) {
   const node = document.createElement(tag);
@@ -155,7 +156,14 @@ async function openDuplicateFinder() {
   const scan = element("button", "duplicate-scan-button");
   scan.type = "button";
   scan.textContent = "Scan";
-  controls.append(rootLabel, sizeLabel, scan);
+  const cancel = element("button", "duplicate-copy");
+  cancel.type = "button";
+  cancel.textContent = "Cancel";
+  cancel.hidden = true;
+  cancel.addEventListener("click", () => {
+    if (activeJob != null) void cancelOperation(activeJob);
+  });
+  controls.append(rootLabel, sizeLabel, scan, cancel);
   const results = element("div", "duplicate-results");
   const intro = element("div", "duplicate-intro");
   intro.textContent = "Scout groups files by size first, then SHA-256 hashes only candidates that could be duplicates.";
@@ -165,18 +173,27 @@ async function openDuplicateFinder() {
   const run = async () => {
     scan.disabled = true;
     scan.textContent = "Scanning…";
-    results.textContent = "Scanning files and hashing candidates…";
+    cancel.hidden = false;
+    results.classList.remove("duplicate-error");
+    results.textContent = "Queued duplicate scan…";
     try {
-      const result = await invoke<DuplicateScan>("find_duplicate_files", {
-        root,
-        minSize: Number(size.value),
-      });
+      const result = await enqueueAndWait<DuplicateScan>(
+        "enqueue_duplicate_scan",
+        { root, minSize: Number(size.value) },
+        (job) => {
+          activeJob = job.id;
+          const progress = job.progress == null ? "" : ` · ${Math.round(job.progress * 100)}%`;
+          results.textContent = `${job.detail ?? "Scanning files…"}${progress}`;
+        },
+      );
       if (!overlay) return;
       renderScan(results, result);
     } catch (error) {
       results.textContent = String(error);
       results.classList.add("duplicate-error");
     } finally {
+      activeJob = null;
+      cancel.hidden = true;
       scan.disabled = false;
       scan.textContent = "Scan";
     }
