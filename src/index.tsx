@@ -5,6 +5,7 @@ import { installImageThumbnails } from "./lib/thumbnails";
 import { installInternalPointerDrag } from "./lib/internal-drag";
 import { installNativeFileDrop } from "./lib/native-drop";
 import { installQuickLook } from "./lib/quick-look";
+import { installUtilities } from "./lib/utilities";
 import "./styles.css";
 import "./native-drop.css";
 import "./internal-drag.css";
@@ -12,6 +13,7 @@ import "./quick-look.css";
 import "./rich-previews.css";
 import "./thumbnails.css";
 import "./global-search.css";
+import "./utilities.css";
 
 const root = document.getElementById("root");
 
@@ -24,6 +26,7 @@ const internalDragCleanup = installInternalPointerDrag();
 const quickLookCleanup = installQuickLook();
 const thumbnailCleanup = installImageThumbnails();
 const globalSearchCleanup = installGlobalSearch();
+const utilitiesCleanup = installUtilities();
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
@@ -31,6 +34,7 @@ if (import.meta.hot) {
     quickLookCleanup();
     thumbnailCleanup();
     globalSearchCleanup();
+    utilitiesCleanup();
     void nativeDropCleanup.then((cleanup) => cleanup());
   });
 }
