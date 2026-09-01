@@ -8,7 +8,7 @@
 - [x] Duplicate
 - [x] Rename
 - [x] Native trash
-- [ ] Filesystem watcher
+- [x] Filesystem watcher with debounced active-directory refresh
 - [x] Hidden files
 - [x] Internal drag/drop between folders
 - [x] Proper keyboard selection

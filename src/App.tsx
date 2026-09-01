@@ -1,3 +1,4 @@
+import { listen } from "@tauri-apps/api/event";
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import Icon, { type IconName } from "./components/Icon";
 import {
@@ -10,6 +11,7 @@ import {
   openEntry,
   renameEntry,
   trashEntries,
+  watchDirectory,
 } from "./lib/fs";
 import type { ClipboardState, DirectoryListing, ExplorerTab, FsEntry, SpecialDirectories } from "./types";
 
@@ -65,6 +67,8 @@ export default function App() {
   const [renamePath, setRenamePath] = createSignal<string | null>(null);
   const [renameValue, setRenameValue] = createSignal("");
   const [contextMenu, setContextMenu] = createSignal<ContextMenuState | null>(null);
+  let stopFilesystemListener: (() => void) | undefined;
+  let refreshTimer: number | undefined;
 
   const activeTab = createMemo(() => tabs().find((tab) => tab.id === activeTabId()) ?? null);
   const entries = createMemo(() => listing()?.entries ?? []);
@@ -77,7 +81,6 @@ export default function App() {
   const sidebarItems = createMemo<SidebarItem[]>(() => {
     const dirs = special();
     if (!dirs) return [];
-
     const items: SidebarItem[] = [{ label: "Home", path: dirs.home, icon: "home" }];
     if (dirs.desktop) items.push({ label: "Desktop", path: dirs.desktop, icon: "desktop" });
     if (dirs.documents) items.push({ label: "Documents", path: dirs.documents, icon: "document" });
@@ -95,6 +98,7 @@ export default function App() {
     setError(null);
     try {
       const next = await listDirectory(path, showHidden());
+      await watchDirectory(next.path);
       setListing(next);
       setSelected([]);
       setSelectionAnchor(null);
@@ -112,19 +116,21 @@ export default function App() {
     updateActiveTab((tab) => {
       if (!pushHistory) return { ...tab, path: next.path, title: next.displayName };
       const history = [...tab.history.slice(0, tab.historyIndex + 1), next.path];
-      return {
-        ...tab,
-        path: next.path,
-        title: next.displayName,
-        history,
-        historyIndex: history.length - 1,
-      };
+      return { ...tab, path: next.path, title: next.displayName, history, historyIndex: history.length - 1 };
     });
   }
 
   async function reload() {
     const path = activeTab()?.path;
     if (path) await load(path);
+  }
+
+  function scheduleFilesystemRefresh() {
+    if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+    refreshTimer = window.setTimeout(() => {
+      refreshTimer = undefined;
+      void reload();
+    }, 120);
   }
 
   async function goHistory(delta: number) {
@@ -134,12 +140,7 @@ export default function App() {
     const path = tab.history[nextIndex];
     if (!path) return;
     const next = await load(path);
-    updateActiveTab((current) => ({
-      ...current,
-      path: next.path,
-      title: next.displayName,
-      historyIndex: nextIndex,
-    }));
+    updateActiveTab((current) => ({ ...current, path: next.path, title: next.displayName, historyIndex: nextIndex }));
   }
 
   async function switchTab(id: string) {
@@ -158,13 +159,7 @@ export default function App() {
     setTabs((current) => [...current, tab]);
     setActiveTabId(id);
     const next = await load(path);
-    updateActiveTab((current) => ({
-      ...current,
-      title: next.displayName,
-      path: next.path,
-      history: [next.path],
-      historyIndex: 0,
-    }));
+    updateActiveTab((current) => ({ ...current, title: next.displayName, path: next.path, history: [next.path], historyIndex: 0 }));
   }
 
   async function closeTab(id: string) {
@@ -183,24 +178,17 @@ export default function App() {
   function selectEntry(event: MouseEvent, entry: FsEntry, index: number) {
     const modifier = event.metaKey || event.ctrlKey;
     const anchor = selectionAnchor();
-
     if (event.shiftKey && anchor !== null) {
       const from = Math.min(anchor, index);
       const to = Math.max(anchor, index);
       setSelected(entries().slice(from, to + 1).map((item) => item.path));
       return;
     }
-
     if (modifier) {
-      setSelected((current) =>
-        current.includes(entry.path)
-          ? current.filter((path) => path !== entry.path)
-          : [...current, entry.path],
-      );
+      setSelected((current) => current.includes(entry.path) ? current.filter((path) => path !== entry.path) : [...current, entry.path]);
       setSelectionAnchor(index);
       return;
     }
-
     setSelected([entry.path]);
     setSelectionAnchor(index);
   }
@@ -226,7 +214,6 @@ export default function App() {
       setRenamePath(null);
       return;
     }
-
     try {
       await renameEntry(path, nextName);
       setRenamePath(null);
@@ -261,11 +248,9 @@ export default function App() {
   async function paste(destination = activeTab()?.path) {
     const payload = clipboard();
     if (!payload || !destination) return;
-
     try {
-      if (payload.mode === "copy") {
-        await copyEntries(payload.paths, destination);
-      } else {
+      if (payload.mode === "copy") await copyEntries(payload.paths, destination);
+      else {
         await moveEntries(payload.paths, destination);
         setClipboard(null);
       }
@@ -278,7 +263,6 @@ export default function App() {
   async function makeFolder() {
     const path = activeTab()?.path;
     if (!path) return;
-
     try {
       const folder = await createFolder(path);
       await reload();
@@ -297,24 +281,18 @@ export default function App() {
   function moveKeyboardSelection(delta: number) {
     const list = entries();
     if (!list.length) return;
-    const currentIndex = selected().length
-      ? list.findIndex((entry) => entry.path === selected()[0])
-      : -1;
+    const currentIndex = selected().length ? list.findIndex((entry) => entry.path === selected()[0]) : -1;
     const nextIndex = Math.min(Math.max(currentIndex + delta, 0), list.length - 1);
     setSelected([list[nextIndex].path]);
     setSelectionAnchor(nextIndex);
-    document
-      .querySelector<HTMLElement>(`[data-entry-index="${nextIndex}"]`)
-      ?.scrollIntoView({ block: "nearest" });
+    document.querySelector<HTMLElement>(`[data-entry-index="${nextIndex}"]`)?.scrollIntoView({ block: "nearest" });
   }
 
   async function handleKeyDown(event: KeyboardEvent) {
     if (renamePath()) return;
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
-
     const modifier = event.metaKey || event.ctrlKey;
     const key = event.key.toLowerCase();
-
     if (modifier && key === "c" && selected().length) {
       event.preventDefault();
       setClipboard({ mode: "copy", paths: selected() });
@@ -365,7 +343,6 @@ export default function App() {
     event.preventDefault();
     const raw = event.dataTransfer?.getData("application/x-scout-paths");
     if (!raw) return;
-
     try {
       const paths = JSON.parse(raw) as string[];
       await moveEntries(paths, destination);
@@ -382,11 +359,12 @@ export default function App() {
   onMount(async () => {
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("click", closeContextMenu);
-
     try {
+      stopFilesystemListener = await listen("scout-fs-change", scheduleFilesystemRefresh);
       const dirs = await getSpecialDirectories();
       setSpecial(dirs);
       const first = await listDirectory(dirs.home, showHidden());
+      await watchDirectory(first.path);
       const id = makeId();
       setTabs([{ id, title: first.displayName, path: first.path, history: [first.path], historyIndex: 0 }]);
       setActiveTabId(id);
@@ -399,32 +377,22 @@ export default function App() {
   onCleanup(() => {
     window.removeEventListener("keydown", handleKeyDown);
     window.removeEventListener("click", closeContextMenu);
+    stopFilesystemListener?.();
+    if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
   });
 
   return (
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand-row">
-          <Icon name="scout" size={18} />
-          <span>Scout</span>
-        </div>
-
+        <div class="brand-row"><Icon name="scout" size={18} /><span>Scout</span></div>
         <div class="sidebar-section-label">Places</div>
         <nav class="sidebar-nav">
-          <For each={sidebarItems()}>
-            {(item) => (
-              <button
-                class="sidebar-item"
-                classList={{ active: activeTab()?.path === item.path }}
-                onClick={() => navigate(item.path)}
-              >
-                <Icon name={item.icon} size={15} />
-                <span>{item.label}</span>
-              </button>
-            )}
-          </For>
+          <For each={sidebarItems()}>{(item) => (
+            <button class="sidebar-item" classList={{ active: activeTab()?.path === item.path }} onClick={() => navigate(item.path)}>
+              <Icon name={item.icon} size={15} /><span>{item.label}</span>
+            </button>
+          )}</For>
         </nav>
-
         <div class="sidebar-spacer" />
         <div class="sidebar-footer">GPLv3 · local-first</div>
       </aside>
@@ -432,181 +400,88 @@ export default function App() {
       <section class="workspace">
         <header class="toolbar">
           <div class="toolbar-group">
-            <button class="icon-button" disabled={!canGoBack()} onClick={() => goHistory(-1)} aria-label="Back">
-              <Icon name="arrow-left" />
-            </button>
-            <button class="icon-button" disabled={!canGoForward()} onClick={() => goHistory(1)} aria-label="Forward">
-              <Icon name="arrow-right" />
-            </button>
-            <button
-              class="icon-button"
-              disabled={!listing()?.parentPath}
-              onClick={() => {
-                const parent = listing()?.parentPath;
-                if (parent) void navigate(parent);
-              }}
-              aria-label="Up"
-            >
-              <Icon name="arrow-up" />
-            </button>
+            <button class="icon-button" disabled={!canGoBack()} onClick={() => goHistory(-1)} aria-label="Back"><Icon name="arrow-left" /></button>
+            <button class="icon-button" disabled={!canGoForward()} onClick={() => goHistory(1)} aria-label="Forward"><Icon name="arrow-right" /></button>
+            <button class="icon-button" disabled={!listing()?.parentPath} onClick={() => { const parent = listing()?.parentPath; if (parent) void navigate(parent); }} aria-label="Up"><Icon name="arrow-up" /></button>
           </div>
-
-          <div class="path-display" title={activeTab()?.path ?? ""}>
-            {activeTab()?.path ?? "Loading…"}
-          </div>
-
+          <div class="path-display" title={activeTab()?.path ?? ""}>{activeTab()?.path ?? "Loading…"}</div>
           <div class="toolbar-group toolbar-actions">
-            <button class="icon-button" classList={{ active: showHidden() }} onClick={toggleHiddenFiles} aria-label="Show hidden files">
-              <Icon name="eye" />
-            </button>
-            <button class="icon-button" onClick={makeFolder} aria-label="New folder">
-              <Icon name="new-folder" />
-            </button>
+            <button class="icon-button" classList={{ active: showHidden() }} onClick={toggleHiddenFiles} aria-label="Show hidden files"><Icon name="eye" /></button>
+            <button class="icon-button" onClick={makeFolder} aria-label="New folder"><Icon name="new-folder" /></button>
           </div>
         </header>
 
         <div class="tab-strip">
-          <For each={tabs()}>
-            {(tab) => (
-              <button class="tab" classList={{ active: tab.id === activeTabId() }} onClick={() => switchTab(tab.id)}>
-                <Icon name="folder" size={13} />
-                <span>{tab.title}</span>
-                <Show when={tabs().length > 1}>
-                  <span
-                    class="tab-close"
-                    role="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void closeTab(tab.id);
-                    }}
-                  >
-                    <Icon name="close" size={12} />
-                  </span>
-                </Show>
-              </button>
-            )}
-          </For>
-          <button class="new-tab-button" onClick={newTab} aria-label="New tab">
-            <Icon name="plus" size={14} />
-          </button>
+          <For each={tabs()}>{(tab) => (
+            <button class="tab" classList={{ active: tab.id === activeTabId() }} onClick={() => switchTab(tab.id)}>
+              <Icon name="folder" size={13} /><span>{tab.title}</span>
+              <Show when={tabs().length > 1}><span class="tab-close" role="button" onClick={(event) => { event.stopPropagation(); void closeTab(tab.id); }}><Icon name="close" size={12} /></span></Show>
+            </button>
+          )}</For>
+          <button class="new-tab-button" onClick={newTab} aria-label="New tab"><Icon name="plus" size={14} /></button>
         </div>
 
         <main
           class="file-area"
           classList={{ loading: loading() }}
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setSelected([]);
-          }}
-          onDragOver={(event) => {
-            if (event.dataTransfer?.types.includes("application/x-scout-paths")) event.preventDefault();
-          }}
-          onDrop={(event) => {
-            const path = activeTab()?.path;
-            if (path) void handleDrop(event, path);
-          }}
+          onClick={(event) => { if (event.target === event.currentTarget) setSelected([]); }}
+          onDragOver={(event) => { if (event.dataTransfer?.types.includes("application/x-scout-paths")) event.preventDefault(); }}
+          onDrop={(event) => { const path = activeTab()?.path; if (path) void handleDrop(event, path); }}
         >
-          <div class="file-header">
-            <div>Name</div>
-            <div>Modified</div>
-            <div class="size-cell">Size</div>
-          </div>
-
+          <div class="file-header"><div>Name</div><div>Modified</div><div class="size-cell">Size</div></div>
           <div class="file-list">
-            <For each={entries()}>
-              {(entry, index) => (
-                <div
-                  class="file-row"
-                  classList={{
-                    selected: selected().includes(entry.path),
-                    cut: clipboard()?.mode === "move" && !!clipboard()?.paths.includes(entry.path),
-                  }}
-                  data-entry-index={index()}
-                  draggable
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    selectEntry(event, entry, index());
-                  }}
-                  onDblClick={() => activateEntry(entry)}
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (!selected().includes(entry.path)) setSelected([entry.path]);
-                    setContextMenu({ x: event.clientX, y: event.clientY, path: entry.path });
-                  }}
-                  onDragStart={(event) => handleDragStart(event, entry)}
-                  onDragOver={(event) => {
-                    if (entry.kind === "directory") event.preventDefault();
-                  }}
-                  onDrop={(event) => {
-                    event.stopPropagation();
-                    if (entry.kind === "directory") void handleDrop(event, entry.path);
-                  }}
-                >
-                  <div class="name-cell">
-                    <span class="file-icon">
-                      <Icon name={entry.kind === "directory" ? "folder" : "file"} size={17} />
-                    </span>
-                    <Show when={renamePath() === entry.path} fallback={<span class="file-name">{entry.name}</span>}>
-                      <input
-                        class="rename-input"
-                        value={renameValue()}
-                        onInput={(event) => setRenameValue(event.currentTarget.value)}
-                        onClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) => {
-                          event.stopPropagation();
-                          if (event.key === "Enter") void commitRename();
-                          if (event.key === "Escape") setRenamePath(null);
-                        }}
-                        onBlur={() => commitRename()}
-                      />
-                    </Show>
-                  </div>
-                  <div class="muted-cell">{formatModified(entry.modifiedMs)}</div>
-                  <div class="muted-cell size-cell">{entry.kind === "directory" ? "—" : formatBytes(entry.size)}</div>
+            <For each={entries()}>{(entry, index) => (
+              <div
+                class="file-row"
+                classList={{ selected: selected().includes(entry.path), cut: clipboard()?.mode === "move" && !!clipboard()?.paths.includes(entry.path) }}
+                data-entry-index={index()}
+                draggable
+                onClick={(event) => { event.stopPropagation(); selectEntry(event, entry, index()); }}
+                onDblClick={() => activateEntry(entry)}
+                onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); if (!selected().includes(entry.path)) setSelected([entry.path]); setContextMenu({ x: event.clientX, y: event.clientY, path: entry.path }); }}
+                onDragStart={(event) => handleDragStart(event, entry)}
+                onDragOver={(event) => { if (entry.kind === "directory") event.preventDefault(); }}
+                onDrop={(event) => { event.stopPropagation(); if (entry.kind === "directory") void handleDrop(event, entry.path); }}
+              >
+                <div class="name-cell">
+                  <span class="file-icon"><Icon name={entry.kind === "directory" ? "folder" : "file"} size={17} /></span>
+                  <Show when={renamePath() === entry.path} fallback={<span class="file-name">{entry.name}</span>}>
+                    <input
+                      class="rename-input"
+                      value={renameValue()}
+                      onInput={(event) => setRenameValue(event.currentTarget.value)}
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => { event.stopPropagation(); if (event.key === "Enter") void commitRename(); if (event.key === "Escape") setRenamePath(null); }}
+                      onBlur={() => commitRename()}
+                    />
+                  </Show>
                 </div>
-              )}
-            </For>
+                <div class="muted-cell">{formatModified(entry.modifiedMs)}</div>
+                <div class="muted-cell size-cell">{entry.kind === "directory" ? "—" : formatBytes(entry.size)}</div>
+              </div>
+            )}</For>
           </div>
-
-          <Show when={!loading() && entries().length === 0}>
-            <div class="empty-state">This folder is empty.</div>
-          </Show>
+          <Show when={!loading() && entries().length === 0}><div class="empty-state">This folder is empty.</div></Show>
         </main>
 
         <footer class="statusbar">
           <span>{entries().length} {entries().length === 1 ? "item" : "items"}</span>
           <Show when={selected().length}><span>{selected().length} selected</span></Show>
-          <Show when={clipboard()}>
-            {(payload) => <span>{payload().mode === "copy" ? "Copied" : "Cut"} {payload().paths.length}</span>}
-          </Show>
-          <Show when={error()}>
-            {(message) => <span class="status-error" title={message()}>{message()}</span>}
-          </Show>
+          <Show when={clipboard()}>{(payload) => <span>{payload().mode === "copy" ? "Copied" : "Cut"} {payload().paths.length}</span>}</Show>
+          <Show when={error()}>{(message) => <span class="status-error" title={message()}>{message()}</span>}</Show>
         </footer>
       </section>
 
-      <Show when={contextMenu()}>
-        {(menu) => (
-          <div
-            class="context-menu"
-            style={{ left: `${menu().x}px`, top: `${menu().y}px` }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button onClick={() => { setClipboard({ mode: "copy", paths: selected() }); setContextMenu(null); }}>
-              <Icon name="copy" size={14} />Copy
-            </button>
-            <button onClick={() => { setClipboard({ mode: "move", paths: selected() }); setContextMenu(null); }}>
-              Cut
-            </button>
-            <button onClick={() => startRename(menu().path)}>Rename <kbd>F2</kbd></button>
-            <button onClick={duplicateSelection}>Duplicate <kbd>⌘D</kbd></button>
-            <div class="menu-separator" />
-            <button class="danger" onClick={trashSelection}>
-              <Icon name="trash" size={14} />Move to Trash
-            </button>
-          </div>
-        )}
-      </Show>
+      <Show when={contextMenu()}>{(menu) => (
+        <div class="context-menu" style={{ left: `${menu().x}px`, top: `${menu().y}px` }} onClick={(event) => event.stopPropagation()}>
+          <button onClick={() => { setClipboard({ mode: "copy", paths: selected() }); setContextMenu(null); }}><Icon name="copy" size={14} />Copy</button>
+          <button onClick={() => { setClipboard({ mode: "move", paths: selected() }); setContextMenu(null); }}>Cut</button>
+          <button onClick={() => startRename(menu().path)}>Rename <kbd>F2</kbd></button>
+          <button onClick={duplicateSelection}>Duplicate <kbd>⌘D</kbd></button>
+          <div class="menu-separator" />
+          <button class="danger" onClick={trashSelection}><Icon name="trash" size={14} />Move to Trash</button>
+        </div>
+      )}</Show>
     </div>
   );
 }

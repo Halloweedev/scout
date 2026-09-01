@@ -4,6 +4,9 @@ import type { DirectoryListing, FsEntry, SpecialDirectories } from "../types";
 export const listDirectory = (path: string, showHidden: boolean) =>
   invoke<DirectoryListing>("list_directory", { path, showHidden });
 
+export const watchDirectory = (path: string) =>
+  invoke<void>("watch_directory", { path });
+
 export const getSpecialDirectories = () =>
   invoke<SpecialDirectories>("special_directories");
 
