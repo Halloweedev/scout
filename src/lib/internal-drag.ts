@@ -1,4 +1,4 @@
-import { getActiveDirectory, getActiveListing, moveEntries } from "./fs";
+import { moveEntries } from "./fs";
 
 interface DragCandidate {
   startX: number;
@@ -16,27 +16,19 @@ let ghost: HTMLDivElement | null = null;
 let suppressClick = false;
 
 function rowFromTarget(target: EventTarget | null) {
-  return target instanceof Element ? target.closest<HTMLElement>(".file-row") : null;
+  return target instanceof Element ? target.closest<HTMLElement>(".pane-file-row") : null;
 }
 
-function entryForRow(row: HTMLElement | null) {
-  if (!row) return null;
-  const listing = getActiveListing();
-  const index = Number(row.dataset.entryIndex);
-  if (!listing || !Number.isInteger(index)) return null;
-  return listing.entries[index] ?? null;
+function rowPath(row: HTMLElement | null) {
+  return row?.dataset.entryPath ?? null;
 }
 
-function selectedPaths() {
-  const listing = getActiveListing();
-  if (!listing) return [];
-  const paths: string[] = [];
-  for (const row of document.querySelectorAll<HTMLElement>(".file-row.selected")) {
-    const index = Number(row.dataset.entryIndex);
-    const entry = Number.isInteger(index) ? listing.entries[index] : undefined;
-    if (entry) paths.push(entry.path);
-  }
-  return paths;
+function selectedPaths(row: HTMLElement) {
+  const pane = row.closest<HTMLElement>(".explorer-pane");
+  if (!pane) return [];
+  return [...pane.querySelectorAll<HTMLElement>(".pane-file-row.selected")]
+    .map((candidate) => candidate.dataset.entryPath)
+    .filter((path): path is string => !!path);
 }
 
 function clearDropTarget() {
@@ -74,20 +66,18 @@ function updateDestination(x: number, y: number) {
   if (!candidate) return;
   clearDropTarget();
 
-  const listing = getActiveListing();
-  const activeDirectory = getActiveDirectory();
-  if (!listing || !activeDirectory) return;
-
   const hit = document.elementFromPoint(x, y);
-  const targetRow = hit?.closest<HTMLElement>(".file-row") ?? null;
-  const targetEntry = entryForRow(targetRow);
+  const targetRow = hit?.closest<HTMLElement>(".pane-file-row") ?? null;
+  const targetPath = rowPath(targetRow);
+  const targetKind = targetRow?.dataset.entryKind;
 
-  if (targetRow && targetEntry?.kind === "directory" && !candidate.paths.includes(targetEntry.path)) {
-    destination = targetEntry.path;
+  if (targetRow && targetPath && targetKind === "directory" && !candidate.paths.includes(targetPath)) {
+    destination = targetPath;
     dropTarget = targetRow;
   } else {
-    destination = activeDirectory;
-    dropTarget = document.querySelector<HTMLElement>(".file-area");
+    const pane = hit?.closest<HTMLElement>(".explorer-pane") ?? document.querySelector<HTMLElement>(".explorer-pane.active");
+    destination = pane?.dataset.panePath ?? null;
+    dropTarget = pane?.querySelector<HTMLElement>(".file-area") ?? null;
   }
 
   dropTarget?.classList.add("internal-drop-target");
@@ -98,16 +88,16 @@ function handlePointerDown(event: PointerEvent) {
   if (event.target instanceof Element && event.target.closest("input, button, .tab-close")) return;
 
   const row = rowFromTarget(event.target);
-  const entry = entryForRow(row);
-  if (!row || !entry) return;
+  const path = rowPath(row);
+  if (!row || !path) return;
 
-  const selected = selectedPaths();
-  const paths = selected.includes(entry.path) ? selected : [entry.path];
+  const selected = selectedPaths(row);
+  const paths = selected.includes(path) ? selected : [path];
   candidate = {
     startX: event.clientX,
     startY: event.clientY,
     paths,
-    label: entry.name,
+    label: row.dataset.entryName ?? path,
   };
 }
 

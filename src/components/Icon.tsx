@@ -18,6 +18,7 @@ export type IconName =
   | "new-folder"
   | "plus"
   | "scout"
+  | "split"
   | "trash";
 
 interface IconProps {
@@ -44,6 +45,7 @@ const iconContent: Record<IconName, JSX.Element> = {
   "new-folder": <><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" /><path d="M12 10v6m-3-3h6" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
   scout: <><path d="M12 3.5 20 8v8l-8 4.5L4 16V8z" /><path d="m8.5 10 3.5-2 3.5 2-3.5 2zM8.5 14l3.5 2 3.5-2" /></>,
+  split: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 4v16" /></>,
   trash: <><path d="M4 7h16M9 7V4h6v3m3 0-1 14H7L6 7" /><path d="M10 11v6m4-6v6" /></>,
 };
 

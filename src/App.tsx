@@ -10,6 +10,7 @@ import {
   moveEntries,
   openEntry,
   renameEntry,
+  setActiveListing,
   trashEntries,
   watchDirectory,
 } from "./lib/fs";
@@ -19,12 +20,33 @@ interface ContextMenuState {
   x: number;
   y: number;
   path: string;
+  paneId: string;
 }
 
 interface SidebarItem {
   label: string;
   path: string;
   icon: IconName;
+}
+
+interface PaneState {
+  id: string;
+  title: string;
+  path: string;
+  listing: DirectoryListing | null;
+  history: string[];
+  historyIndex: number;
+  selected: string[];
+  selectionAnchor: number | null;
+  loading: boolean;
+  error: string | null;
+}
+
+interface LoadPaneOptions {
+  pushHistory?: boolean;
+  historyIndex?: number;
+  resetHistory?: boolean;
+  syncTab?: boolean;
 }
 
 const makeId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
@@ -53,29 +75,44 @@ function formatModified(value: number | null) {
   }).format(new Date(value));
 }
 
+function paneFromListing(listing: DirectoryListing): PaneState {
+  return {
+    id: makeId(),
+    title: listing.displayName,
+    path: listing.path,
+    listing,
+    history: [listing.path],
+    historyIndex: 0,
+    selected: [],
+    selectionAnchor: null,
+    loading: false,
+    error: null,
+  };
+}
+
 export default function App() {
   const [special, setSpecial] = createSignal<SpecialDirectories | null>(null);
-  const [listing, setListing] = createSignal<DirectoryListing | null>(null);
   const [tabs, setTabs] = createSignal<ExplorerTab[]>([]);
   const [activeTabId, setActiveTabId] = createSignal("");
-  const [selected, setSelected] = createSignal<string[]>([]);
-  const [selectionAnchor, setSelectionAnchor] = createSignal<number | null>(null);
+  const [panes, setPanes] = createSignal<PaneState[]>([]);
+  const [activePaneId, setActivePaneId] = createSignal("");
   const [showHidden, setShowHidden] = createSignal(false);
   const [clipboard, setClipboard] = createSignal<ClipboardState | null>(null);
-  const [loading, setLoading] = createSignal(false);
-  const [error, setError] = createSignal<string | null>(null);
   const [renamePath, setRenamePath] = createSignal<string | null>(null);
+  const [renamePaneId, setRenamePaneId] = createSignal<string | null>(null);
   const [renameValue, setRenameValue] = createSignal("");
   const [contextMenu, setContextMenu] = createSignal<ContextMenuState | null>(null);
   let stopFilesystemListener: (() => void) | undefined;
   let refreshTimer: number | undefined;
 
   const activeTab = createMemo(() => tabs().find((tab) => tab.id === activeTabId()) ?? null);
-  const entries = createMemo(() => listing()?.entries ?? []);
-  const canGoBack = createMemo(() => (activeTab()?.historyIndex ?? 0) > 0);
+  const activePane = createMemo(() => panes().find((pane) => pane.id === activePaneId()) ?? null);
+  const activeEntries = createMemo(() => activePane()?.listing?.entries ?? []);
+  const activeSelected = createMemo(() => activePane()?.selected ?? []);
+  const canGoBack = createMemo(() => (activePane()?.historyIndex ?? 0) > 0);
   const canGoForward = createMemo(() => {
-    const tab = activeTab();
-    return !!tab && tab.historyIndex < tab.history.length - 1;
+    const pane = activePane();
+    return !!pane && pane.historyIndex < pane.history.length - 1;
   });
 
   const sidebarItems = createMemo<SidebarItem[]>(() => {
@@ -88,78 +125,130 @@ export default function App() {
     return items;
   });
 
+  function paneById(id: string) {
+    return panes().find((pane) => pane.id === id) ?? null;
+  }
+
+  function updatePane(id: string, mutator: (pane: PaneState) => PaneState) {
+    setPanes((current) => current.map((pane) => (pane.id === id ? mutator(pane) : pane)));
+  }
+
   function updateActiveTab(mutator: (tab: ExplorerTab) => ExplorerTab) {
     const id = activeTabId();
     setTabs((current) => current.map((tab) => (tab.id === id ? mutator(tab) : tab)));
   }
 
-  async function load(path: string) {
-    setLoading(true);
-    setError(null);
-    try {
-      const next = await listDirectory(path, showHidden());
-      await watchDirectory(next.path);
-      setListing(next);
-      setSelected([]);
-      setSelectionAnchor(null);
-      return next;
-    } catch (reason) {
-      setError(String(reason));
-      throw reason;
-    } finally {
-      setLoading(false);
-    }
+  function syncTabToPane(pane: PaneState) {
+    updateActiveTab((tab) => ({ ...tab, path: pane.path, title: pane.title }));
   }
 
-  async function navigate(path: string, pushHistory = true) {
-    const next = await load(path);
-    updateActiveTab((tab) => {
-      if (!pushHistory) return { ...tab, path: next.path, title: next.displayName };
-      const history = [...tab.history.slice(0, tab.historyIndex + 1), next.path];
-      return { ...tab, path: next.path, title: next.displayName, history, historyIndex: history.length - 1 };
+  function focusPane(id: string) {
+    const pane = paneById(id);
+    if (!pane) return;
+    setActivePaneId(id);
+    setActiveListing(pane.listing);
+    syncTabToPane(pane);
+    void watchDirectory(pane.path).catch((reason) => {
+      updatePane(id, (current) => ({ ...current, error: String(reason) }));
     });
   }
 
-  async function reload() {
-    const path = activeTab()?.path;
-    if (path) await load(path);
+  async function loadPane(id: string, path: string, options: LoadPaneOptions = {}) {
+    const current = paneById(id);
+    if (!current) return null;
+
+    updatePane(id, (pane) => ({ ...pane, loading: true, error: null }));
+    try {
+      const listing = await listDirectory(path, showHidden());
+      const pushHistory = options.pushHistory ?? true;
+      let history = current.history;
+      let historyIndex = current.historyIndex;
+
+      if (options.resetHistory) {
+        history = [listing.path];
+        historyIndex = 0;
+      } else if (options.historyIndex !== undefined) {
+        historyIndex = options.historyIndex;
+      } else if (pushHistory) {
+        history = [...current.history.slice(0, current.historyIndex + 1), listing.path];
+        historyIndex = history.length - 1;
+      }
+
+      const nextPane: PaneState = {
+        ...current,
+        title: listing.displayName,
+        path: listing.path,
+        listing,
+        history,
+        historyIndex,
+        selected: [],
+        selectionAnchor: null,
+        loading: false,
+        error: null,
+      };
+      updatePane(id, () => nextPane);
+
+      if (id === activePaneId()) {
+        setActiveListing(listing);
+        await watchDirectory(listing.path);
+        if (options.syncTab !== false) syncTabToPane(nextPane);
+      }
+      return nextPane;
+    } catch (reason) {
+      updatePane(id, (pane) => ({ ...pane, loading: false, error: String(reason) }));
+      return null;
+    }
+  }
+
+  async function navigate(path: string) {
+    const id = activePaneId();
+    if (id) await loadPane(id, path);
+  }
+
+  async function reloadPane(id: string) {
+    const pane = paneById(id);
+    if (pane) await loadPane(id, pane.path, { pushHistory: false });
+  }
+
+  async function reloadActivePane() {
+    const id = activePaneId();
+    if (id) await reloadPane(id);
   }
 
   function scheduleFilesystemRefresh() {
     if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
     refreshTimer = window.setTimeout(() => {
       refreshTimer = undefined;
-      void reload();
+      void reloadActivePane();
     }, 120);
   }
 
   async function goHistory(delta: number) {
-    const tab = activeTab();
-    if (!tab) return;
-    const nextIndex = tab.historyIndex + delta;
-    const path = tab.history[nextIndex];
+    const pane = activePane();
+    if (!pane) return;
+    const nextIndex = pane.historyIndex + delta;
+    const path = pane.history[nextIndex];
     if (!path) return;
-    const next = await load(path);
-    updateActiveTab((current) => ({ ...current, path: next.path, title: next.displayName, historyIndex: nextIndex }));
+    await loadPane(pane.id, path, { pushHistory: false, historyIndex: nextIndex });
   }
 
   async function switchTab(id: string) {
     const tab = tabs().find((candidate) => candidate.id === id);
-    if (!tab || id === activeTabId()) return;
+    const pane = activePane();
+    if (!tab || !pane || id === activeTabId()) return;
     setActiveTabId(id);
     setRenamePath(null);
-    await load(tab.path);
+    setRenamePaneId(null);
+    await loadPane(pane.id, tab.path, { pushHistory: false, resetHistory: true, syncTab: false });
   }
 
   async function newTab() {
-    const path = activeTab()?.path ?? special()?.home;
+    const pane = activePane();
+    const path = pane?.path ?? special()?.home;
     if (!path) return;
     const id = makeId();
-    const tab: ExplorerTab = { id, title: "Scout", path, history: [path], historyIndex: 0 };
-    setTabs((current) => [...current, tab]);
+    setTabs((current) => [...current, { id, title: pane?.title ?? "Scout", path, history: [path], historyIndex: 0 }]);
     setActiveTabId(id);
-    const next = await load(path);
-    updateActiveTab((current) => ({ ...current, title: next.displayName, path: next.path, history: [next.path], historyIndex: 0 }));
   }
 
   async function closeTab(id: string) {
@@ -171,121 +260,179 @@ export default function App() {
     if (id === activeTabId()) {
       const next = remaining[Math.min(index, remaining.length - 1)];
       setActiveTabId(next.id);
-      await load(next.path);
+      const pane = activePane();
+      if (pane) await loadPane(pane.id, next.path, { pushHistory: false, resetHistory: true, syncTab: false });
     }
   }
 
-  function selectEntry(event: MouseEvent, entry: FsEntry, index: number) {
+  async function addPane() {
+    if (panes().length >= 4) return;
+    const source = activePane();
+    const path = source?.path ?? special()?.home;
+    if (!path) return;
+    try {
+      const listing = await listDirectory(path, showHidden());
+      const pane = paneFromListing(listing);
+      setPanes((current) => [...current, pane]);
+      setActivePaneId(pane.id);
+      setActiveListing(listing);
+      syncTabToPane(pane);
+      await watchDirectory(listing.path);
+    } catch (reason) {
+      if (source) updatePane(source.id, (pane) => ({ ...pane, error: String(reason) }));
+    }
+  }
+
+  function removePane(id = activePaneId()) {
+    const current = panes();
+    if (current.length <= 1) return;
+    const index = current.findIndex((pane) => pane.id === id);
+    if (index < 0) return;
+    const remaining = current.filter((pane) => pane.id !== id);
+    setPanes(remaining);
+    if (id === activePaneId()) {
+      const next = remaining[Math.min(index, remaining.length - 1)];
+      setActivePaneId(next.id);
+      setActiveListing(next.listing);
+      syncTabToPane(next);
+      void watchDirectory(next.path);
+    }
+  }
+
+  function selectEntry(event: MouseEvent, paneId: string, entry: FsEntry, index: number) {
+    focusPane(paneId);
+    const pane = paneById(paneId);
+    if (!pane) return;
     const modifier = event.metaKey || event.ctrlKey;
-    const anchor = selectionAnchor();
+    const anchor = pane.selectionAnchor;
+    const entries = pane.listing?.entries ?? [];
+
     if (event.shiftKey && anchor !== null) {
       const from = Math.min(anchor, index);
       const to = Math.max(anchor, index);
-      setSelected(entries().slice(from, to + 1).map((item) => item.path));
+      updatePane(paneId, (current) => ({
+        ...current,
+        selected: entries.slice(from, to + 1).map((item) => item.path),
+      }));
       return;
     }
+
     if (modifier) {
-      setSelected((current) => current.includes(entry.path) ? current.filter((path) => path !== entry.path) : [...current, entry.path]);
-      setSelectionAnchor(index);
+      updatePane(paneId, (current) => ({
+        ...current,
+        selected: current.selected.includes(entry.path)
+          ? current.selected.filter((path) => path !== entry.path)
+          : [...current.selected, entry.path],
+        selectionAnchor: index,
+      }));
       return;
     }
-    setSelected([entry.path]);
-    setSelectionAnchor(index);
+
+    updatePane(paneId, (current) => ({ ...current, selected: [entry.path], selectionAnchor: index }));
   }
 
-  async function activateEntry(entry: FsEntry) {
-    if (entry.kind === "directory") await navigate(entry.path);
+  async function activateEntry(paneId: string, entry: FsEntry) {
+    focusPane(paneId);
+    if (entry.kind === "directory") await loadPane(paneId, entry.path);
     else await openEntry(entry.path);
   }
 
-  function startRename(path: string) {
-    const entry = entries().find((candidate) => candidate.path === path);
+  function startRename(paneId: string, path: string) {
+    const pane = paneById(paneId);
+    const entry = pane?.listing?.entries.find((candidate) => candidate.path === path);
     if (!entry) return;
+    focusPane(paneId);
+    setRenamePaneId(paneId);
     setRenamePath(path);
     setRenameValue(entry.name);
     setContextMenu(null);
-    queueMicrotask(() => document.querySelector<HTMLInputElement>(".rename-input")?.select());
+    queueMicrotask(() => document.querySelector<HTMLInputElement>(`.explorer-pane.active .rename-input`)?.select());
   }
 
   async function commitRename() {
     const path = renamePath();
+    const paneId = renamePaneId();
     const nextName = renameValue().trim();
-    if (!path || !nextName) {
+    if (!path || !paneId || !nextName) {
       setRenamePath(null);
+      setRenamePaneId(null);
       return;
     }
     try {
       await renameEntry(path, nextName);
       setRenamePath(null);
-      await reload();
+      setRenamePaneId(null);
+      await reloadPane(paneId);
     } catch (reason) {
-      setError(String(reason));
+      updatePane(paneId, (pane) => ({ ...pane, error: String(reason) }));
     }
   }
 
   async function duplicateSelection() {
-    if (!selected().length) return;
+    const pane = activePane();
+    if (!pane?.selected.length) return;
     try {
-      await duplicateEntries(selected());
+      await duplicateEntries(pane.selected);
       setContextMenu(null);
-      await reload();
+      await reloadPane(pane.id);
     } catch (reason) {
-      setError(String(reason));
+      updatePane(pane.id, (current) => ({ ...current, error: String(reason) }));
     }
   }
 
   async function trashSelection() {
-    if (!selected().length) return;
+    const pane = activePane();
+    if (!pane?.selected.length) return;
     try {
-      await trashEntries(selected());
+      await trashEntries(pane.selected);
       setContextMenu(null);
-      await reload();
+      await reloadPane(pane.id);
     } catch (reason) {
-      setError(String(reason));
+      updatePane(pane.id, (current) => ({ ...current, error: String(reason) }));
     }
   }
 
-  async function paste(destination = activeTab()?.path) {
+  async function paste(destination = activePane()?.path, paneId = activePaneId()) {
     const payload = clipboard();
-    if (!payload || !destination) return;
+    if (!payload || !destination || !paneId) return;
     try {
       if (payload.mode === "copy") await copyEntries(payload.paths, destination);
       else {
         await moveEntries(payload.paths, destination);
         setClipboard(null);
       }
-      await reload();
+      await reloadPane(paneId);
     } catch (reason) {
-      setError(String(reason));
+      updatePane(paneId, (pane) => ({ ...pane, error: String(reason) }));
     }
   }
 
   async function makeFolder() {
-    const path = activeTab()?.path;
-    if (!path) return;
+    const pane = activePane();
+    if (!pane) return;
     try {
-      const folder = await createFolder(path);
-      await reload();
-      setSelected([folder.path]);
-      startRename(folder.path);
+      const folder = await createFolder(pane.path);
+      await reloadPane(pane.id);
+      updatePane(pane.id, (current) => ({ ...current, selected: [folder.path] }));
+      startRename(pane.id, folder.path);
     } catch (reason) {
-      setError(String(reason));
+      updatePane(pane.id, (current) => ({ ...current, error: String(reason) }));
     }
   }
 
   async function toggleHiddenFiles() {
     setShowHidden((value) => !value);
-    await reload();
+    await Promise.all(panes().map((pane) => reloadPane(pane.id)));
   }
 
   function moveKeyboardSelection(delta: number) {
-    const list = entries();
-    if (!list.length) return;
-    const currentIndex = selected().length ? list.findIndex((entry) => entry.path === selected()[0]) : -1;
-    const nextIndex = Math.min(Math.max(currentIndex + delta, 0), list.length - 1);
-    setSelected([list[nextIndex].path]);
-    setSelectionAnchor(nextIndex);
-    document.querySelector<HTMLElement>(`[data-entry-index="${nextIndex}"]`)?.scrollIntoView({ block: "nearest" });
+    const pane = activePane();
+    const entries = pane?.listing?.entries ?? [];
+    if (!pane || !entries.length) return;
+    const currentIndex = pane.selected.length ? entries.findIndex((entry) => entry.path === pane.selected[0]) : -1;
+    const nextIndex = Math.min(Math.max(currentIndex + delta, 0), entries.length - 1);
+    updatePane(pane.id, (current) => ({ ...current, selected: [entries[nextIndex].path], selectionAnchor: nextIndex }));
+    document.querySelector<HTMLElement>(`.explorer-pane.active [data-entry-index="${nextIndex}"]`)?.scrollIntoView({ block: "nearest" });
   }
 
   async function handleKeyDown(event: KeyboardEvent) {
@@ -293,12 +440,14 @@ export default function App() {
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
     const modifier = event.metaKey || event.ctrlKey;
     const key = event.key.toLowerCase();
-    if (modifier && key === "c" && selected().length) {
+    const selected = activeSelected();
+
+    if (modifier && key === "c" && selected.length) {
       event.preventDefault();
-      setClipboard({ mode: "copy", paths: selected() });
-    } else if (modifier && key === "x" && selected().length) {
+      setClipboard({ mode: "copy", paths: selected });
+    } else if (modifier && key === "x" && selected.length) {
       event.preventDefault();
-      setClipboard({ mode: "move", paths: selected() });
+      setClipboard({ mode: "move", paths: selected });
     } else if (modifier && key === "v") {
       event.preventDefault();
       await paste();
@@ -314,9 +463,9 @@ export default function App() {
     } else if (modifier && event.shiftKey && event.key === ".") {
       event.preventDefault();
       await toggleHiddenFiles();
-    } else if (event.key === "F2" && selected()[0]) {
+    } else if (event.key === "F2" && selected[0]) {
       event.preventDefault();
-      startRename(selected()[0]);
+      startRename(activePaneId(), selected[0]);
     } else if (event.key === "Delete" || (event.metaKey && event.key === "Backspace")) {
       event.preventDefault();
       await trashSelection();
@@ -326,29 +475,10 @@ export default function App() {
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       moveKeyboardSelection(-1);
-    } else if (event.key === "Enter" && selected()[0]) {
-      const entry = entries().find((candidate) => candidate.path === selected()[0]);
-      if (entry) await activateEntry(entry);
-    }
-  }
-
-  function handleDragStart(event: DragEvent, entry: FsEntry) {
-    if (!selected().includes(entry.path)) setSelected([entry.path]);
-    const paths = selected().includes(entry.path) ? selected() : [entry.path];
-    event.dataTransfer?.setData("application/x-scout-paths", JSON.stringify(paths));
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-  }
-
-  async function handleDrop(event: DragEvent, destination: string) {
-    event.preventDefault();
-    const raw = event.dataTransfer?.getData("application/x-scout-paths");
-    if (!raw) return;
-    try {
-      const paths = JSON.parse(raw) as string[];
-      await moveEntries(paths, destination);
-      await reload();
-    } catch (reason) {
-      setError(String(reason));
+    } else if (event.key === "Enter" && selected[0]) {
+      const entry = activeEntries().find((candidate) => candidate.path === selected[0]);
+      const pane = activePane();
+      if (entry && pane) await activateEntry(pane.id, entry);
     }
   }
 
@@ -370,13 +500,17 @@ export default function App() {
       const dirs = await getSpecialDirectories();
       setSpecial(dirs);
       const first = await listDirectory(dirs.home, showHidden());
+      const pane = paneFromListing(first);
+      const tabId = makeId();
+      setPanes([pane]);
+      setActivePaneId(pane.id);
+      setTabs([{ id: tabId, title: first.displayName, path: first.path, history: [first.path], historyIndex: 0 }]);
+      setActiveTabId(tabId);
+      setActiveListing(first);
       await watchDirectory(first.path);
-      const id = makeId();
-      setTabs([{ id, title: first.displayName, path: first.path, history: [first.path], historyIndex: 0 }]);
-      setActiveTabId(id);
-      setListing(first);
     } catch (reason) {
-      setError(String(reason));
+      const pane = activePane();
+      if (pane) updatePane(pane.id, (current) => ({ ...current, error: String(reason) }));
     }
   });
 
@@ -395,7 +529,7 @@ export default function App() {
         <div class="sidebar-section-label">Places</div>
         <nav class="sidebar-nav">
           <For each={sidebarItems()}>{(item) => (
-            <button class="sidebar-item" classList={{ active: activeTab()?.path === item.path }} onClick={() => navigate(item.path)}>
+            <button class="sidebar-item" classList={{ active: activePane()?.path === item.path }} onClick={() => navigate(item.path)}>
               <Icon name={item.icon} size={15} /><span>{item.label}</span>
             </button>
           )}</For>
@@ -409,10 +543,12 @@ export default function App() {
           <div class="toolbar-group">
             <button class="icon-button" disabled={!canGoBack()} onClick={() => goHistory(-1)} aria-label="Back"><Icon name="arrow-left" /></button>
             <button class="icon-button" disabled={!canGoForward()} onClick={() => goHistory(1)} aria-label="Forward"><Icon name="arrow-right" /></button>
-            <button class="icon-button" disabled={!listing()?.parentPath} onClick={() => { const parent = listing()?.parentPath; if (parent) void navigate(parent); }} aria-label="Up"><Icon name="arrow-up" /></button>
+            <button class="icon-button" disabled={!activePane()?.listing?.parentPath} onClick={() => { const parent = activePane()?.listing?.parentPath; if (parent) void navigate(parent); }} aria-label="Up"><Icon name="arrow-up" /></button>
           </div>
-          <div class="path-display" title={activeTab()?.path ?? ""}>{activeTab()?.path ?? "Loading…"}</div>
+          <div class="path-display" title={activePane()?.path ?? ""}>{activePane()?.path ?? "Loading…"}</div>
           <div class="toolbar-group toolbar-actions">
+            <button class="icon-button" disabled={panes().length >= 4} onClick={addPane} aria-label="Add pane" title="Add pane"><Icon name="split" /></button>
+            <button class="icon-button" disabled={panes().length <= 1} onClick={() => removePane()} aria-label="Close active pane" title="Close active pane"><Icon name="close" /></button>
             <button class="icon-button" classList={{ active: showHidden() }} onClick={toggleHiddenFiles} aria-label="Show hidden files"><Icon name="eye" /></button>
             <button class="icon-button" onClick={makeFolder} aria-label="New folder"><Icon name="new-folder" /></button>
           </div>
@@ -428,65 +564,97 @@ export default function App() {
           <button class="new-tab-button" onClick={newTab} aria-label="New tab"><Icon name="plus" size={14} /></button>
         </div>
 
-        <main
-          class="file-area"
-          classList={{ loading: loading() }}
-          onClick={(event) => { if (event.target === event.currentTarget) setSelected([]); }}
-          onDragOver={(event) => { if (event.dataTransfer?.types.includes("application/x-scout-paths")) event.preventDefault(); }}
-          onDrop={(event) => { const path = activeTab()?.path; if (path) void handleDrop(event, path); }}
-        >
-          <div class="file-header"><div>Name</div><div>Modified</div><div class="size-cell">Size</div></div>
-          <div class="file-list">
-            <For each={entries()}>{(entry, index) => (
-              <div
-                class="file-row"
-                classList={{ selected: selected().includes(entry.path), cut: clipboard()?.mode === "move" && !!clipboard()?.paths.includes(entry.path) }}
-                data-entry-index={index()}
-                draggable
-                onClick={(event) => { event.stopPropagation(); selectEntry(event, entry, index()); }}
-                onDblClick={() => activateEntry(entry)}
-                onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); if (!selected().includes(entry.path)) setSelected([entry.path]); setContextMenu({ x: event.clientX, y: event.clientY, path: entry.path }); }}
-                onDragStart={(event) => handleDragStart(event, entry)}
-                onDragOver={(event) => { if (entry.kind === "directory") event.preventDefault(); }}
-                onDrop={(event) => { event.stopPropagation(); if (entry.kind === "directory") void handleDrop(event, entry.path); }}
-              >
-                <div class="name-cell">
-                  <span class="file-icon"><Icon name={entry.kind === "directory" ? "folder" : "file"} size={17} /></span>
-                  <Show when={renamePath() === entry.path} fallback={<span class="file-name">{entry.name}</span>}>
-                    <input
-                      class="rename-input"
-                      value={renameValue()}
-                      onInput={(event) => setRenameValue(event.currentTarget.value)}
-                      onClick={(event) => event.stopPropagation()}
-                      onKeyDown={(event) => { event.stopPropagation(); if (event.key === "Enter") void commitRename(); if (event.key === "Escape") setRenamePath(null); }}
-                      onBlur={() => commitRename()}
-                    />
-                  </Show>
-                </div>
-                <div class="muted-cell">{formatModified(entry.modifiedMs)}</div>
-                <div class="muted-cell size-cell">{entry.kind === "directory" ? "—" : formatBytes(entry.size)}</div>
+        <div class={`pane-grid panes-${panes().length}`}>
+          <For each={panes()}>{(pane) => (
+            <section
+              class="explorer-pane"
+              classList={{ active: pane.id === activePaneId() }}
+              data-pane-path={pane.path}
+              onPointerDown={() => focusPane(pane.id)}
+            >
+              <div class="pane-chrome">
+                <span class="pane-path" title={pane.path}>{pane.path}</span>
+                <Show when={panes().length > 1}>
+                  <button class="pane-close-button" onClick={(event) => { event.stopPropagation(); removePane(pane.id); }} aria-label="Close pane"><Icon name="close" size={12} /></button>
+                </Show>
               </div>
-            )}</For>
-          </div>
-          <Show when={!loading() && entries().length === 0}><div class="empty-state">This folder is empty.</div></Show>
-        </main>
+              <main
+                class="file-area"
+                classList={{ loading: pane.loading }}
+                onClick={(event) => {
+                  if (event.target === event.currentTarget) {
+                    focusPane(pane.id);
+                    updatePane(pane.id, (current) => ({ ...current, selected: [], selectionAnchor: null }));
+                  }
+                }}
+              >
+                <div class="file-header"><div>Name</div><div>Modified</div><div class="size-cell">Size</div></div>
+                <div class="file-list">
+                  <For each={pane.listing?.entries ?? []}>{(entry, index) => (
+                    <div
+                      class="pane-file-row"
+                      classList={{
+                        "file-row": pane.id === activePaneId(),
+                        selected: pane.selected.includes(entry.path),
+                        cut: clipboard()?.mode === "move" && !!clipboard()?.paths.includes(entry.path),
+                      }}
+                      data-entry-index={index()}
+                      data-entry-path={entry.path}
+                      data-entry-name={entry.name}
+                      data-entry-kind={entry.kind}
+                      data-entry-extension={entry.extension ?? ""}
+                      data-entry-modified={entry.modifiedMs ?? ""}
+                      onClick={(event) => { event.stopPropagation(); selectEntry(event, pane.id, entry, index()); }}
+                      onDblClick={() => activateEntry(pane.id, entry)}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        focusPane(pane.id);
+                        if (!pane.selected.includes(entry.path)) updatePane(pane.id, (current) => ({ ...current, selected: [entry.path], selectionAnchor: index() }));
+                        setContextMenu({ x: event.clientX, y: event.clientY, path: entry.path, paneId: pane.id });
+                      }}
+                    >
+                      <div class="name-cell">
+                        <span class="file-icon"><Icon name={entry.kind === "directory" ? "folder" : "file"} size={17} /></span>
+                        <Show when={renamePaneId() === pane.id && renamePath() === entry.path} fallback={<span class="file-name">{entry.name}</span>}>
+                          <input
+                            class="rename-input"
+                            value={renameValue()}
+                            onInput={(event) => setRenameValue(event.currentTarget.value)}
+                            onClick={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => { event.stopPropagation(); if (event.key === "Enter") void commitRename(); if (event.key === "Escape") { setRenamePath(null); setRenamePaneId(null); } }}
+                            onBlur={() => commitRename()}
+                          />
+                        </Show>
+                      </div>
+                      <div class="muted-cell">{formatModified(entry.modifiedMs)}</div>
+                      <div class="muted-cell size-cell">{entry.kind === "directory" ? "—" : formatBytes(entry.size)}</div>
+                    </div>
+                  )}</For>
+                </div>
+                <Show when={!pane.loading && (pane.listing?.entries.length ?? 0) === 0}><div class="empty-state">This folder is empty.</div></Show>
+              </main>
+            </section>
+          )}</For>
+        </div>
 
         <footer class="statusbar">
-          <span>{entries().length} {entries().length === 1 ? "item" : "items"}</span>
-          <Show when={selected().length}><span>{selected().length} selected</span></Show>
+          <span>{activeEntries().length} {activeEntries().length === 1 ? "item" : "items"}</span>
+          <Show when={activeSelected().length}><span>{activeSelected().length} selected</span></Show>
+          <Show when={panes().length > 1}><span>{panes().length} panes</span></Show>
           <Show when={clipboard()}>{(payload) => <span>{payload().mode === "copy" ? "Copied" : "Cut"} {payload().paths.length}</span>}</Show>
-          <Show when={error()}>{(message) => <span class="status-error" title={message()}>{message()}</span>}</Show>
+          <Show when={activePane()?.error}>{(message) => <span class="status-error" title={message()}>{message()}</span>}</Show>
         </footer>
       </section>
 
       <Show when={contextMenu()}>{(menu) => (
         <div class="context-menu" style={{ left: `${menu().x}px`, top: `${menu().y}px` }} onClick={(event) => event.stopPropagation()}>
-          <button onClick={() => { setClipboard({ mode: "copy", paths: selected() }); setContextMenu(null); }}><Icon name="copy" size={14} />Copy</button>
-          <button onClick={() => { setClipboard({ mode: "move", paths: selected() }); setContextMenu(null); }}>Cut</button>
-          <button onClick={() => startRename(menu().path)}>Rename <kbd>F2</kbd></button>
-          <button onClick={duplicateSelection}>Duplicate <kbd>⌘D</kbd></button>
+          <button onClick={() => { focusPane(menu().paneId); setClipboard({ mode: "copy", paths: paneById(menu().paneId)?.selected ?? [] }); setContextMenu(null); }}><Icon name="copy" size={14} />Copy</button>
+          <button onClick={() => { focusPane(menu().paneId); setClipboard({ mode: "move", paths: paneById(menu().paneId)?.selected ?? [] }); setContextMenu(null); }}>Cut</button>
+          <button onClick={() => startRename(menu().paneId, menu().path)}>Rename <kbd>F2</kbd></button>
+          <button onClick={() => { focusPane(menu().paneId); void duplicateSelection(); }}>Duplicate <kbd>⌘D</kbd></button>
           <div class="menu-separator" />
-          <button class="danger" onClick={trashSelection}><Icon name="trash" size={14} />Move to Trash</button>
+          <button class="danger" onClick={() => { focusPane(menu().paneId); void trashSelection(); }}><Icon name="trash" size={14} />Move to Trash</button>
         </div>
       )}</Show>
     </div>

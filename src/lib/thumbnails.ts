@@ -12,6 +12,21 @@ function thumbnailKey(path: string, modifiedMs: number | null) {
 }
 
 function rowEntry(row: HTMLElement) {
+  const path = row.dataset.entryPath;
+  const name = row.dataset.entryName;
+  const kind = row.dataset.entryKind;
+  const extension = row.dataset.entryExtension || null;
+  const modifiedRaw = row.dataset.entryModified;
+  if (path && name && kind) {
+    return {
+      path,
+      name,
+      kind,
+      extension,
+      modifiedMs: modifiedRaw ? Number(modifiedRaw) : null,
+    };
+  }
+
   const listing = getActiveListing();
   const index = Number(row.dataset.entryIndex);
   if (!listing || !Number.isInteger(index)) return null;
@@ -80,11 +95,16 @@ export function installImageThumbnails() {
         void loadThumbnail(icon);
       }
     },
-    { root: document.querySelector(".file-area"), rootMargin: "160px" },
+    { root: null, rootMargin: "160px" },
   );
 
   mutationObserver = new MutationObserver(scheduleReconcile);
-  mutationObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-entry-index"] });
+  mutationObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["data-entry-index", "class"],
+  });
   scheduleReconcile();
 
   return () => {

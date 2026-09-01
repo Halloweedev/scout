@@ -5,14 +5,17 @@ let activeDirectory: string | null = null;
 let activeListing: DirectoryListing | null = null;
 
 export async function listDirectory(path: string, showHidden: boolean) {
-  const listing = await invoke<DirectoryListing>("list_directory", { path, showHidden });
-  activeListing = listing;
-  return listing;
+  return invoke<DirectoryListing>("list_directory", { path, showHidden });
 }
 
 export async function watchDirectory(path: string) {
   await invoke<void>("watch_directory", { path });
   activeDirectory = path;
+}
+
+export function setActiveListing(listing: DirectoryListing | null) {
+  activeListing = listing;
+  activeDirectory = listing?.path ?? null;
 }
 
 export const getActiveDirectory = () => activeDirectory;
