@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { cancelOperation, enqueueAndWait } from "./operation-queue";
 
 interface FolderSizeItem {
   name: string;
@@ -25,6 +25,7 @@ interface Rect {
 let observer: MutationObserver | null = null;
 let overlay: HTMLDivElement | null = null;
 let resizeObserver: ResizeObserver | null = null;
+let activeJob: number | null = null;
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string) {
   const node = document.createElement(tag);
@@ -147,15 +148,24 @@ async function openDiskMap() {
   path.textContent = root;
   path.title = root;
   heading.append(title, path);
+  const headerActions = element("div", "disk-map-header-actions");
+  const cancelButton = element("button", "disk-map-close");
+  cancelButton.type = "button";
+  cancelButton.textContent = "Cancel";
+  cancelButton.hidden = true;
+  cancelButton.addEventListener("click", () => {
+    if (activeJob != null) void cancelOperation(activeJob);
+  });
   const closeButton = element("button", "disk-map-close");
   closeButton.type = "button";
   closeButton.textContent = "Close";
   closeButton.addEventListener("click", close);
-  header.append(heading, closeButton);
+  headerActions.append(cancelButton, closeButton);
+  header.append(heading, headerActions);
 
   const body = element("div", "disk-map-body");
   const loading = element("div", "disk-map-loading");
-  loading.textContent = "Calculating folder sizes…";
+  loading.textContent = "Queued folder size scan…";
   body.append(loading);
   sheet.append(header, body);
   overlay.append(sheet);
@@ -165,7 +175,18 @@ async function openDiskMap() {
   document.body.append(overlay);
 
   try {
-    const scan = await invoke<FolderSizeScan>("analyze_folder_sizes", { root, maxEntries: 80 });
+    cancelButton.hidden = false;
+    const scan = await enqueueAndWait<FolderSizeScan>(
+      "enqueue_folder_size_scan",
+      { root, maxEntries: 80 },
+      (job) => {
+        activeJob = job.id;
+        const progress = job.progress == null ? "" : ` · ${Math.round(job.progress * 100)}%`;
+        loading.textContent = `${job.detail ?? "Calculating folder sizes…"}${progress}`;
+      },
+    );
+    activeJob = null;
+    cancelButton.hidden = true;
     if (!overlay) return;
     const summary = element("div", "disk-map-summary");
     summary.textContent = `${formatBytes(scan.totalBytes)} total · ${scan.items.length}${scan.otherBytes ? "+" : ""} visible items`;
@@ -177,6 +198,8 @@ async function openDiskMap() {
     resizeObserver.observe(map);
     renderMap(map, items);
   } catch (error) {
+    activeJob = null;
+    cancelButton.hidden = true;
     body.replaceChildren();
     const message = element("div", "disk-map-error");
     message.textContent = String(error);
