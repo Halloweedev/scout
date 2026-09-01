@@ -120,11 +120,13 @@ impl JobContext {
     }
 
     pub fn progress(&self, progress: Option<f64>, detail: impl Into<Option<String>>) {
-        let state = self.app.state::<OperationQueueState>();
-        state.update(self.id, |job| {
-            job.progress = progress.map(|value| value.clamp(0.0, 1.0));
-            job.detail = detail.into();
-        });
+        {
+            let state = self.app.state::<OperationQueueState>();
+            state.update(self.id, |job| {
+                job.progress = progress.map(|value| value.clamp(0.0, 1.0));
+                job.detail = detail.into();
+            });
+        }
         let _ = self.app.emit("scout-operation-queue", self.id);
     }
 }
@@ -134,27 +136,35 @@ where
     T: Serialize + Send + 'static,
     F: FnOnce(JobContext) -> Result<T, String> + Send + 'static,
 {
-    let (id, cancel) = app
-        .state::<OperationQueueState>()
-        .create_job(kind.into(), label.into());
+    let (id, cancel) = {
+        let state = app.state::<OperationQueueState>();
+        state.create_job(kind.into(), label.into())
+    };
     let app_for_task = app.clone();
+
     tauri::async_runtime::spawn_blocking(move || {
-        let state = app_for_task.state::<OperationQueueState>();
         if cancel.load(Ordering::Relaxed) {
-            state.update(id, |job| {
-                job.status = "cancelled".to_string();
-                job.progress = None;
-                job.finished_ms = Some(now_ms());
-            });
-            state.finish_cancel_tracking(id);
+            {
+                let state = app_for_task.state::<OperationQueueState>();
+                state.update(id, |job| {
+                    job.status = "cancelled".to_string();
+                    job.progress = None;
+                    job.detail = Some("Cancelled".to_string());
+                    job.finished_ms = Some(now_ms());
+                });
+                state.finish_cancel_tracking(id);
+            }
             let _ = app_for_task.emit("scout-operation-queue", id);
             return;
         }
 
-        state.update(id, |job| {
-            job.status = "running".to_string();
-            job.started_ms = Some(now_ms());
-        });
+        {
+            let state = app_for_task.state::<OperationQueueState>();
+            state.update(id, |job| {
+                job.status = "running".to_string();
+                job.started_ms = Some(now_ms());
+            });
+        }
         let _ = app_for_task.emit("scout-operation-queue", id);
 
         let context = JobContext {
@@ -164,37 +174,45 @@ where
         };
         let result = worker(context);
         let cancelled = cancel.load(Ordering::Relaxed);
-        state.update(id, |job| {
-            job.finished_ms = Some(now_ms());
-            if cancelled {
-                job.status = "cancelled".to_string();
-                job.progress = None;
-                job.detail = Some("Cancelled".to_string());
-                return;
-            }
-            match result {
-                Ok(value) => match serde_json::to_value(value) {
-                    Ok(value) => {
-                        job.status = "completed".to_string();
-                        job.progress = Some(1.0);
-                        job.result = Some(value);
-                    }
+
+        {
+            let state = app_for_task.state::<OperationQueueState>();
+            state.update(id, move |job| {
+                job.finished_ms = Some(now_ms());
+                if cancelled {
+                    job.status = "cancelled".to_string();
+                    job.progress = None;
+                    job.detail = Some("Cancelled".to_string());
+                    return;
+                }
+                match result {
+                    Ok(value) => match serde_json::to_value(value) {
+                        Ok(value) => {
+                            job.status = "completed".to_string();
+                            job.progress = Some(1.0);
+                            job.result = Some(value);
+                        }
+                        Err(error) => {
+                            job.status = "failed".to_string();
+                            job.progress = None;
+                            job.error = Some(error.to_string());
+                        }
+                    },
                     Err(error) => {
                         job.status = "failed".to_string();
                         job.progress = None;
-                        job.error = Some(error.to_string());
+                        job.error = Some(error);
                     }
-                },
-                Err(error) => {
-                    job.status = "failed".to_string();
-                    job.progress = None;
-                    job.error = Some(error);
                 }
-            }
-        });
-        state.finish_cancel_tracking(id);
+            });
+        }
+        {
+            let state = app_for_task.state::<OperationQueueState>();
+            state.finish_cancel_tracking(id);
+        }
         let _ = app_for_task.emit("scout-operation-queue", id);
     });
+
     let _ = app.emit("scout-operation-queue", id);
     id
 }
