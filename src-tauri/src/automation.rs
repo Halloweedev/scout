@@ -4,6 +4,7 @@ use crate::{
     history::HistoryState,
     images::{self, ImageTransformOptions},
     queue::{self, JobContext},
+    scripts,
     utilities,
 };
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -41,6 +42,11 @@ pub enum AutomationAction {
         engine: String,
         destination: String,
         target: String,
+    },
+    Script {
+        program: String,
+        arguments: Vec<String>,
+        working_directory: Option<String>,
     },
 }
 
@@ -237,6 +243,30 @@ fn normalize_conversion(engine: &mut String, target: &mut String) -> Result<(), 
     Ok(())
 }
 
+fn validate_script(
+    program: &mut String,
+    arguments: &mut Vec<String>,
+    working_directory: &mut Option<String>,
+) -> Result<(), String> {
+    *program = program.trim().to_string();
+    if program.is_empty() {
+        return Err("Program path cannot be empty".into());
+    }
+    if arguments.len() > 64 {
+        return Err("Scout automation supports at most 64 program arguments".into());
+    }
+    if arguments.iter().any(|argument| argument.len() > 4096) {
+        return Err("A program argument is too long".into());
+    }
+    *working_directory = normalized_optional(working_directory.take());
+    if let Some(directory) = working_directory.as_deref() {
+        if !Path::new(directory).is_dir() {
+            return Err("Program working directory is not a directory".into());
+        }
+    }
+    Ok(())
+}
+
 fn validate_rule_input(mut input: AutomationRuleInput) -> Result<AutomationRuleInput, String> {
     input.name = input.name.trim().to_string();
     if input.name.is_empty() {
@@ -309,6 +339,13 @@ fn validate_rule_input(mut input: AutomationRuleInput) -> Result<AutomationRuleI
             }
             validate_output_destination(&folder, destination)?;
             normalize_conversion(engine, target)?;
+        }
+        AutomationAction::Script {
+            program,
+            arguments,
+            working_directory,
+        } => {
+            validate_script(program, arguments, working_directory)?;
         }
     }
     Ok(input)
@@ -536,6 +573,19 @@ fn apply_matches(
                 }
                 _ => return Err("Unknown automation conversion engine".into()),
             },
+            AutomationAction::Script {
+                program,
+                arguments,
+                working_directory,
+            } => {
+                scripts::run_program_blocking(
+                    program.clone(),
+                    arguments.clone(),
+                    working_directory.clone(),
+                    item.path.clone(),
+                    context,
+                )?;
+            }
         }
         affected += 1;
         context.progress(

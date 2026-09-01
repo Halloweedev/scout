@@ -9,7 +9,8 @@ type AutomationAction =
   | { type: "rename"; template: string }
   | { type: "archive"; destination: string }
   | { type: "image"; destination: string; format: ImageFormat; maxWidth: number | null; maxHeight: number | null; quality: number | null }
-  | { type: "convert"; engine: ConverterEngine; destination: string; target: string };
+  | { type: "convert"; engine: ConverterEngine; destination: string; target: string }
+  | { type: "script"; program: string; arguments: string[]; workingDirectory: string | null };
 
 interface AutomationRule {
   id: number;
@@ -67,6 +68,9 @@ interface DraftRule {
   imageQuality: string;
   converterEngine: ConverterEngine;
   converterTarget: string;
+  scriptProgram: string;
+  scriptArguments: string;
+  scriptWorkingDirectory: string;
 }
 
 const CONVERTER_TARGETS: Record<ConverterEngine, Array<[string, string]>> = {
@@ -123,11 +127,23 @@ function newDraft(): DraftRule {
     imageQuality: "88",
     converterEngine: "ffmpeg",
     converterTarget: "mp4",
+    scriptProgram: "",
+    scriptArguments: "{path}",
+    scriptWorkingDirectory: "",
   };
 }
 
 function actionDestination(action: AutomationAction) {
-  return action.type === "rename" ? "" : action.destination;
+  switch (action.type) {
+    case "move":
+    case "copy":
+    case "archive":
+    case "image":
+    case "convert":
+      return action.destination;
+    default:
+      return "";
+  }
 }
 
 function draftFromRule(rule: AutomationRule): DraftRule {
@@ -150,6 +166,9 @@ function draftFromRule(rule: AutomationRule): DraftRule {
     imageQuality: rule.action.type === "image" && rule.action.quality != null ? String(rule.action.quality) : "88",
     converterEngine: rule.action.type === "convert" ? rule.action.engine : "ffmpeg",
     converterTarget: rule.action.type === "convert" ? rule.action.target : "mp4",
+    scriptProgram: rule.action.type === "script" ? rule.action.program : "",
+    scriptArguments: rule.action.type === "script" ? rule.action.arguments.join("\n") : "{path}",
+    scriptWorkingDirectory: rule.action.type === "script" ? rule.action.workingDirectory ?? "" : "",
   };
 }
 
@@ -193,6 +212,13 @@ function payloadFromDraft(current: DraftRule) {
       destination: current.actionValue,
       target: current.converterTarget,
     };
+  } else if (current.actionType === "script") {
+    action = {
+      type: "script",
+      program: current.scriptProgram,
+      arguments: current.scriptArguments.split(/\r?\n/).map((value) => value.trim()).filter(Boolean),
+      workingDirectory: current.scriptWorkingDirectory.trim() || null,
+    };
   } else {
     action = { type: current.actionType, destination: current.actionValue };
   }
@@ -229,6 +255,20 @@ function textField(labelText: string, value: string, onInput: (value: string) =>
   input.value = value;
   input.placeholder = placeholder;
   input.spellcheck = false;
+  input.addEventListener("input", () => onInput(input.value));
+  label.append(caption, input);
+  return label;
+}
+
+function textareaField(labelText: string, value: string, onInput: (value: string) => void, placeholder = "") {
+  const label = element("label", "automation-field");
+  const caption = element("span", "automation-field-label");
+  caption.textContent = labelText;
+  const input = element("textarea", "automation-input");
+  input.value = value;
+  input.placeholder = placeholder;
+  input.spellcheck = false;
+  input.rows = 4;
   input.addEventListener("input", () => onInput(input.value));
   label.append(caption, input);
   return label;
@@ -358,7 +398,7 @@ function renderEditor(container: HTMLElement) {
   const actionSelect = selectField(
     "Action",
     current.actionType,
-    [["move", "Move to folder"], ["copy", "Copy to folder"], ["rename", "Rename"], ["archive", "Archive to ZIP"], ["image", "Optimize / convert image"], ["convert", "Convert media / document"]],
+    [["move", "Move to folder"], ["copy", "Copy to folder"], ["rename", "Rename"], ["archive", "Archive to ZIP"], ["image", "Optimize / convert image"], ["convert", "Convert media / document"], ["script", "Run program / script"]],
     (value) => {
       current.actionType = value as DraftRule["actionType"];
       if (current.actionType === "rename") current.actionValue = "{stem}-sorted.{ext}";
@@ -367,13 +407,16 @@ function renderEditor(container: HTMLElement) {
       renderManager();
     },
   );
-  const actionValue = textField(
-    current.actionType === "rename" ? "Rename template" : "Destination folder",
-    current.actionValue,
-    (value) => { current.actionValue = value; },
-    current.actionType === "rename" ? "{stem}-sorted.{ext}" : "/Users/…/Archive",
-  );
-  actionGrid.append(actionSelect, actionValue);
+  actionGrid.append(actionSelect);
+  if (current.actionType !== "script") {
+    const actionValue = textField(
+      current.actionType === "rename" ? "Rename template" : "Destination folder",
+      current.actionValue,
+      (value) => { current.actionValue = value; },
+      current.actionType === "rename" ? "{stem}-sorted.{ext}" : "/Users/…/Archive",
+    );
+    actionGrid.append(actionValue);
+  }
   form.append(actionGrid);
 
   if (current.actionType === "image") {
@@ -400,6 +443,16 @@ function renderEditor(container: HTMLElement) {
     form.append(conversionGrid);
   }
 
+  if (current.actionType === "script") {
+    const scriptGrid = element("div", "automation-grid");
+    scriptGrid.append(
+      textField("Program", current.scriptProgram, (value) => { current.scriptProgram = value; }, "/usr/local/bin/my-script"),
+      textField("Working directory", current.scriptWorkingDirectory, (value) => { current.scriptWorkingDirectory = value; }, "optional"),
+    );
+    form.append(scriptGrid);
+    form.append(textareaField("Arguments · one per line", current.scriptArguments, (value) => { current.scriptArguments = value; }, "{path}"));
+  }
+
   const hint = element("div", "automation-hint");
   if (current.actionType === "rename") {
     hint.textContent = "Rename placeholders: {name}, {stem}, {ext}, {n}.";
@@ -409,6 +462,8 @@ function renderEditor(container: HTMLElement) {
     hint.textContent = "Each matching item becomes its own ZIP in the destination folder. The destination must be outside the watched tree.";
   } else if (current.actionType === "convert") {
     hint.textContent = `${current.converterEngine === "ffmpeg" ? "FFmpeg" : current.converterEngine === "pandoc" ? "Pandoc" : "LibreOffice"} must be installed locally. Scout kills the process if the Operations job is cancelled.`;
+  } else if (current.actionType === "script") {
+    hint.textContent = "Scout launches the program directly, never through a shell. Argument placeholders: {path}, {name}, {stem}, {ext}, {folder}. Cancelling the job kills the child process.";
   } else {
     hint.textContent = "For safety, destinations inside the watched folder are blocked to prevent self-trigger loops.";
   }

@@ -10,6 +10,7 @@ mod images;
 mod pdf;
 mod preview;
 mod queue;
+mod scripts;
 mod search;
 mod similar;
 mod terminal;
