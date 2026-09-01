@@ -1,0 +1,178 @@
+.operation-queue-sidebar {
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.operation-queue-sidebar-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.operation-queue-count {
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 8%);
+  color: rgb(255 255 255 / 56%);
+  font-size: 10px;
+  text-align: center;
+}
+
+.operation-queue-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 92;
+  display: flex;
+  justify-content: flex-end;
+  padding: 18px;
+  background: rgb(0 0 0 / 30%);
+  backdrop-filter: blur(8px);
+}
+
+.operation-queue-sheet {
+  width: min(420px, calc(100vw - 36px));
+  height: min(680px, calc(100vh - 36px));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 18px;
+  background: rgb(17 17 17 / 96%);
+  box-shadow: 0 28px 90px rgb(0 0 0 / 52%);
+}
+
+.operation-queue-header {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 16px 0 18px;
+  border-bottom: 1px solid rgb(255 255 255 / 7%);
+}
+
+.operation-queue-title {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.operation-queue-subtitle {
+  margin-top: 3px;
+  color: rgb(255 255 255 / 42%);
+  font-size: 11px;
+}
+
+.operation-queue-header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.operation-queue-text-button,
+.operation-cancel {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgb(255 255 255 / 54%);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.operation-queue-text-button {
+  padding: 7px 8px;
+}
+
+.operation-queue-text-button:hover,
+.operation-cancel:hover {
+  background: rgb(255 255 255 / 6%);
+  color: rgb(255 255 255 / 86%);
+}
+
+.operation-queue-body {
+  overflow: auto;
+  padding: 8px;
+}
+
+.operation-queue-empty {
+  padding: 36px 16px;
+  text-align: center;
+  color: rgb(255 255 255 / 38%);
+  font-size: 12px;
+}
+
+.operation-job {
+  position: relative;
+  padding: 12px 12px 11px;
+  border-bottom: 1px solid rgb(255 255 255 / 6%);
+}
+
+.operation-job:last-child {
+  border-bottom: 0;
+}
+
+.operation-job-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.operation-job-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgb(255 255 255 / 84%);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.operation-job-status {
+  flex: 0 0 auto;
+  color: rgb(255 255 255 / 42%);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.operation-job-detail {
+  margin-top: 4px;
+  padding-right: 54px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgb(255 255 255 / 38%);
+  font-size: 11px;
+}
+
+.operation-progress-track {
+  height: 2px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 7%);
+}
+
+.operation-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: rgb(255 255 255 / 68%);
+  transition: width 180ms ease;
+}
+
+.operation-cancel {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  padding: 5px 7px;
+}
+
+.operation-job.completed .operation-job-status {
+  color: rgb(255 255 255 / 56%);
+}
+
+.operation-job.failed .operation-job-status,
+.operation-job.cancelled .operation-job-status {
+  color: rgb(255 255 255 / 66%);
+}
