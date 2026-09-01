@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { enqueueAndWait, type OperationJob } from "./operation-queue";
 
 interface ConverterCapabilities {
   ffmpeg: boolean;
@@ -70,18 +71,30 @@ function engineRow(name: string, copy: string, available: boolean) {
   return row;
 }
 
+function queuedStatus(job: OperationJob<ConversionResult>) {
+  if (job.status === "queued") return "Queued in Operations…";
+  return job.detail ?? `Running ${job.label}…`;
+}
+
 async function execute(command: string, args: Record<string, unknown>, output: HTMLElement, button: HTMLButtonElement) {
   button.disabled = true;
   const original = button.textContent ?? "Convert";
-  button.textContent = "Converting…";
-  output.textContent = "";
+  button.textContent = "Queued…";
+  output.className = "converter-result";
+  output.textContent = "Added to Operations. You can close this sheet without stopping the conversion.";
   try {
-    const result = await invoke<ConversionResult>(command, args);
+    const result = await enqueueAndWait<ConversionResult>(command, args, (job) => {
+      if (!overlay || !button.isConnected) return;
+      button.textContent = job.status === "queued" ? "Queued…" : "Converting…";
+      output.className = "converter-result";
+      output.textContent = queuedStatus(job);
+    });
     if (!overlay) return;
     output.className = "converter-result success";
     output.textContent = `${result.engine} created ${result.output.split(/[\\/]/).pop() ?? result.output}`;
     button.textContent = "Done";
   } catch (error) {
+    if (!overlay) return;
     output.className = "converter-result error";
     output.textContent = String(error);
     button.disabled = false;
@@ -133,6 +146,10 @@ async function openConverter(kind: "media" | "document") {
     );
     body.append(engines);
 
+    const queueNote = element("div", "converter-result");
+    queueNote.textContent = "Conversions run in Operations and can be cancelled there.";
+    body.append(queueNote);
+
     const result = element("div", "converter-result");
     const controls = element("div", "converter-controls");
     if (kind === "media") {
@@ -141,7 +158,7 @@ async function openConverter(kind: "media" | "document") {
       convert.type = "button";
       convert.textContent = "Convert with FFmpeg";
       convert.disabled = !capabilities.ffmpeg;
-      convert.addEventListener("click", () => void execute("convert_media", { path, destination, target: target.value }, result, convert));
+      convert.addEventListener("click", () => void execute("enqueue_media_conversion", { path, destination, target: target.value }, result, convert));
       controls.append(target, convert);
     } else {
       const pandocTarget = optionSelect([["html", "HTML"], ["docx", "DOCX"], ["odt", "ODT"], ["rtf", "RTF"], ["epub", "EPUB"], ["md", "Markdown"], ["txt", "Text"]]);
@@ -149,14 +166,14 @@ async function openConverter(kind: "media" | "document") {
       pandoc.type = "button";
       pandoc.textContent = "Pandoc";
       pandoc.disabled = !capabilities.pandoc;
-      pandoc.addEventListener("click", () => void execute("convert_with_pandoc", { path, destination, target: pandocTarget.value }, result, pandoc));
+      pandoc.addEventListener("click", () => void execute("enqueue_pandoc_conversion", { path, destination, target: pandocTarget.value }, result, pandoc));
 
       const officeTarget = optionSelect([["pdf", "PDF"], ["docx", "DOCX"], ["odt", "ODT"], ["xlsx", "XLSX"], ["csv", "CSV"], ["pptx", "PPTX"]]);
       const office = element("button", "converter-secondary");
       office.type = "button";
       office.textContent = "LibreOffice";
       office.disabled = !capabilities.libreoffice;
-      office.addEventListener("click", () => void execute("convert_with_libreoffice", { path, destination, target: officeTarget.value }, result, office));
+      office.addEventListener("click", () => void execute("enqueue_libreoffice_conversion", { path, destination, target: officeTarget.value }, result, office));
       const pairOne = element("div", "converter-control-pair");
       pairOne.append(pandocTarget, pandoc);
       const pairTwo = element("div", "converter-control-pair");
