@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
 import { openEntry } from "./fs";
+import { cancelOperation, enqueueAndWait } from "./operation-queue";
 import { thumbnailEntry } from "./preview";
 
 interface SimilarPhotoItem {
@@ -23,6 +23,7 @@ interface SimilarPhotoScan {
 let observer: MutationObserver | null = null;
 let overlay: HTMLDivElement | null = null;
 let scanToken = 0;
+let activeJob: number | null = null;
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string) {
   const node = document.createElement(tag);
@@ -91,16 +92,33 @@ function renderGroup(group: SimilarPhotoGroup, index: number) {
   return section;
 }
 
-async function runScan(root: string, threshold: number, body: HTMLElement, runButton: HTMLButtonElement) {
+async function runScan(
+  root: string,
+  threshold: number,
+  body: HTMLElement,
+  runButton: HTMLButtonElement,
+  cancelButton: HTMLButtonElement,
+) {
   const token = ++scanToken;
   runButton.disabled = true;
   runButton.textContent = "Scanning…";
+  cancelButton.hidden = false;
   const status = element("div", "similar-loading");
-  status.textContent = "Hashing local images and comparing visual structure…";
+  status.textContent = "Queued similar-photo scan…";
   body.replaceChildren(status);
 
   try {
-    const result = await invoke<SimilarPhotoScan>("find_similar_photos", { root, threshold, maxFiles: 2500 });
+    const result = await enqueueAndWait<SimilarPhotoScan>(
+      "enqueue_similar_photo_scan",
+      { root, threshold, maxFiles: 2500 },
+      (job) => {
+        activeJob = job.id;
+        if (token !== scanToken || !status.isConnected) return;
+        const progress = job.progress == null ? "" : ` · ${Math.round(job.progress * 100)}%`;
+        status.textContent = `${job.detail ?? "Scanning local images…"}${progress}`;
+      },
+    );
+    activeJob = null;
     if (token !== scanToken || !overlay) return;
     body.replaceChildren();
     const summary = element("div", "similar-summary");
@@ -117,12 +135,14 @@ async function runScan(root: string, threshold: number, body: HTMLElement, runBu
       body.append(groups);
     }
   } catch (error) {
+    activeJob = null;
     if (token !== scanToken || !overlay) return;
     const message = element("div", "similar-error");
     message.textContent = String(error);
     body.replaceChildren(message);
   } finally {
     if (token === scanToken && runButton.isConnected) {
+      cancelButton.hidden = true;
       runButton.disabled = false;
       runButton.textContent = "Scan again";
     }
@@ -162,12 +182,21 @@ function openSimilarPhotos() {
   const runButton = element("button", "similar-run");
   runButton.type = "button";
   runButton.textContent = "Scan";
-  controls.append(sensitivity, runButton);
+  const cancelButton = element("button", "similar-close");
+  cancelButton.type = "button";
+  cancelButton.textContent = "Cancel";
+  cancelButton.hidden = true;
+  cancelButton.addEventListener("click", () => {
+    if (activeJob != null) void cancelOperation(activeJob);
+  });
+  controls.append(sensitivity, runButton, cancelButton);
   const body = element("div", "similar-body");
   const intro = element("div", "similar-empty");
   intro.textContent = "Scout compares compact local image fingerprints. Nothing leaves this computer.";
   body.append(intro);
-  runButton.addEventListener("click", () => void runScan(root, Number(sensitivity.value), body, runButton));
+  runButton.addEventListener("click", () =>
+    void runScan(root, Number(sensitivity.value), body, runButton, cancelButton),
+  );
 
   sheet.append(header, controls, body);
   overlay.append(sheet);
@@ -175,7 +204,7 @@ function openSimilarPhotos() {
     if (event.target === overlay) close();
   });
   document.body.append(overlay);
-  void runScan(root, Number(sensitivity.value), body, runButton);
+  void runScan(root, Number(sensitivity.value), body, runButton, cancelButton);
 }
 
 function enhanceMenu(menu: HTMLElement) {

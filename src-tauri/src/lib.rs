@@ -62,6 +62,7 @@ pub fn run() {
             search::search_index,
             search::record_index_open,
             similar::find_similar_photos,
+            similar::enqueue_similar_photo_scan,
             terminal::open_terminal,
             utilities::checksum_entries,
             utilities::preview_batch_rename,

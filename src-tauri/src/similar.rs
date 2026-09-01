@@ -1,6 +1,8 @@
+use crate::queue::{self, JobContext};
 use image::imageops::FilterType;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
+use tauri::AppHandle;
 use walkdir::WalkDir;
 
 const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "bmp", "tif", "tiff", "ico"];
@@ -43,8 +45,14 @@ fn is_image(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn difference_hash(path: &Path) -> Result<u64, String> {
+fn difference_hash(path: &Path, context: Option<&JobContext>) -> Result<u64, String> {
+    if context.is_some_and(JobContext::cancelled) {
+        return Err("Similar photo scan cancelled".into());
+    }
     let image = image::open(path).map_err(|error| error.to_string())?;
+    if context.is_some_and(JobContext::cancelled) {
+        return Err("Similar photo scan cancelled".into());
+    }
     let gray = image.resize_exact(9, 8, FilterType::Triangle).to_luma8();
     let mut hash = 0u64;
     let mut bit = 0u32;
@@ -63,7 +71,12 @@ fn hamming(left: u64, right: u64) -> u32 {
     (left ^ right).count_ones()
 }
 
-fn scan(root: PathBuf, threshold: u32, max_files: usize) -> Result<SimilarPhotoScan, String> {
+fn scan(
+    root: PathBuf,
+    threshold: u32,
+    max_files: usize,
+    context: Option<&JobContext>,
+) -> Result<SimilarPhotoScan, String> {
     if !root.is_dir() {
         return Err("Similar photo root is not a directory".into());
     }
@@ -73,6 +86,9 @@ fn scan(root: PathBuf, threshold: u32, max_files: usize) -> Result<SimilarPhotoS
     let mut truncated = false;
 
     for entry in WalkDir::new(&root).follow_links(false).into_iter().filter_map(Result::ok) {
+        if context.is_some_and(JobContext::cancelled) {
+            return Err("Similar photo scan cancelled".into());
+        }
         if entry.file_type().is_symlink() || !entry.file_type().is_file() || !is_image(entry.path()) {
             continue;
         }
@@ -80,7 +96,10 @@ fn scan(root: PathBuf, threshold: u32, max_files: usize) -> Result<SimilarPhotoS
             truncated = true;
             break;
         }
-        let Ok(hash) = difference_hash(entry.path()) else {
+        let Ok(hash) = difference_hash(entry.path(), context) else {
+            if context.is_some_and(JobContext::cancelled) {
+                return Err("Similar photo scan cancelled".into());
+            }
             continue;
         };
         photos.push(HashedPhoto {
@@ -88,18 +107,37 @@ fn scan(root: PathBuf, threshold: u32, max_files: usize) -> Result<SimilarPhotoS
             name: entry.file_name().to_string_lossy().into_owned(),
             hash,
         });
+        if photos.len() % 20 == 0 {
+            if let Some(context) = context {
+                let progress = (photos.len() as f64 / max_files as f64 * 0.75).min(0.75);
+                context.progress(
+                    Some(progress),
+                    Some(format!("Hashed {} images", photos.len())),
+                );
+            }
+        }
     }
 
     photos.sort_by(|left, right| left.path.cmp(&right.path));
     let scanned = photos.len();
     let mut clusters: Vec<(u64, String, Vec<SimilarPhotoItem>)> = Vec::new();
 
-    for photo in photos {
+    for (index, photo) in photos.into_iter().enumerate() {
+        if context.is_some_and(JobContext::cancelled) {
+            return Err("Similar photo scan cancelled".into());
+        }
         let mut matched = false;
         for (representative_hash, _, files) in &mut clusters {
+            if context.is_some_and(JobContext::cancelled) {
+                return Err("Similar photo scan cancelled".into());
+            }
             let distance = hamming(*representative_hash, photo.hash);
             if distance <= threshold {
-                files.push(SimilarPhotoItem { path: photo.path.clone(), name: photo.name.clone(), distance });
+                files.push(SimilarPhotoItem {
+                    path: photo.path.clone(),
+                    name: photo.name.clone(),
+                    distance,
+                });
                 matched = true;
                 break;
             }
@@ -108,8 +146,22 @@ fn scan(root: PathBuf, threshold: u32, max_files: usize) -> Result<SimilarPhotoS
             clusters.push((
                 photo.hash,
                 photo.path.clone(),
-                vec![SimilarPhotoItem { path: photo.path, name: photo.name, distance: 0 }],
+                vec![SimilarPhotoItem {
+                    path: photo.path,
+                    name: photo.name,
+                    distance: 0,
+                }],
             ));
+        }
+        if let Some(context) = context {
+            let denominator = scanned.max(1) as f64;
+            let progress = 0.75 + 0.25 * ((index + 1) as f64 / denominator);
+            if index % 20 == 0 || index + 1 == scanned {
+                context.progress(
+                    Some(progress),
+                    Some(format!("Comparing {} of {scanned} images", index + 1)),
+                );
+            }
         }
     }
 
@@ -122,6 +174,10 @@ fn scan(root: PathBuf, threshold: u32, max_files: usize) -> Result<SimilarPhotoS
         })
         .collect();
     groups.sort_by(|left, right| right.files.len().cmp(&left.files.len()));
+
+    if let Some(context) = context {
+        context.progress(Some(1.0), Some("Similar photo scan complete".to_string()));
+    }
 
     Ok(SimilarPhotoScan {
         root: root.to_string_lossy().into_owned(),
@@ -137,7 +193,30 @@ pub async fn find_similar_photos(
     threshold: u32,
     max_files: usize,
 ) -> Result<SimilarPhotoScan, String> {
-    tauri::async_runtime::spawn_blocking(move || scan(PathBuf::from(root), threshold, max_files))
+    tauri::async_runtime::spawn_blocking(move || scan(PathBuf::from(root), threshold, max_files, None))
         .await
         .map_err(|error| format!("Similar photo scan task failed: {error}"))?
+}
+
+#[tauri::command]
+pub fn enqueue_similar_photo_scan(
+    app: AppHandle,
+    root: String,
+    threshold: u32,
+    max_files: usize,
+) -> Result<u64, String> {
+    let root_path = PathBuf::from(&root);
+    if !root_path.is_dir() {
+        return Err("Similar photo root is not a directory".into());
+    }
+    let label = format!(
+        "Find similar photos · {}",
+        root_path
+            .file_name()
+            .map(|value| value.to_string_lossy().into_owned())
+            .unwrap_or_else(|| root.clone())
+    );
+    Ok(queue::enqueue_blocking(app, "similar-photos", label, move |context| {
+        scan(root_path, threshold, max_files, Some(&context))
+    }))
 }
