@@ -356,9 +356,15 @@ export default function App() {
     setContextMenu(null);
   }
 
+  function handleScoutNavigate(event: Event) {
+    const path = (event as CustomEvent<{ path?: string }>).detail?.path;
+    if (path) void navigate(path);
+  }
+
   onMount(async () => {
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("click", closeContextMenu);
+    window.addEventListener("scout:navigate", handleScoutNavigate);
     try {
       stopFilesystemListener = await listen("scout-fs-change", scheduleFilesystemRefresh);
       const dirs = await getSpecialDirectories();
@@ -377,6 +383,7 @@ export default function App() {
   onCleanup(() => {
     window.removeEventListener("keydown", handleKeyDown);
     window.removeEventListener("click", closeContextMenu);
+    window.removeEventListener("scout:navigate", handleScoutNavigate);
     stopFilesystemListener?.();
     if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
   });

@@ -1,5 +1,6 @@
 import { render } from "solid-js/web";
 import App from "./App";
+import { installGlobalSearch } from "./lib/global-search";
 import { installImageThumbnails } from "./lib/thumbnails";
 import { installInternalPointerDrag } from "./lib/internal-drag";
 import { installNativeFileDrop } from "./lib/native-drop";
@@ -10,6 +11,7 @@ import "./internal-drag.css";
 import "./quick-look.css";
 import "./rich-previews.css";
 import "./thumbnails.css";
+import "./global-search.css";
 
 const root = document.getElementById("root");
 
@@ -21,12 +23,14 @@ const nativeDropCleanup = installNativeFileDrop();
 const internalDragCleanup = installInternalPointerDrag();
 const quickLookCleanup = installQuickLook();
 const thumbnailCleanup = installImageThumbnails();
+const globalSearchCleanup = installGlobalSearch();
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     internalDragCleanup();
     quickLookCleanup();
     thumbnailCleanup();
+    globalSearchCleanup();
     void nativeDropCleanup.then((cleanup) => cleanup());
   });
 }

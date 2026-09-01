@@ -1,6 +1,7 @@
 mod archive;
 mod fs;
 mod preview;
+mod search;
 mod watch;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -20,6 +21,10 @@ pub fn run() {
             fs::open_entry,
             preview::preview_entry,
             preview::thumbnail_entry,
+            search::index_status,
+            search::rebuild_index,
+            search::search_index,
+            search::record_index_open,
             watch::watch_directory,
         ])
         .run(tauri::generate_context!())
