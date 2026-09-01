@@ -7,6 +7,7 @@ import { installImageThumbnails } from "./lib/thumbnails";
 import { installImageTools } from "./lib/image-tools";
 import { installInternalPointerDrag } from "./lib/internal-drag";
 import { installNativeFileDrop } from "./lib/native-drop";
+import { installPortal } from "./lib/portal";
 import { installQuickLook } from "./lib/quick-look";
 import { installSimilarPhotos } from "./lib/similar-photos";
 import { installUtilities } from "./lib/utilities";
@@ -22,6 +23,7 @@ import "./duplicates.css";
 import "./disk-map.css";
 import "./image-tools.css";
 import "./similar-photos.css";
+import "./portal.css";
 
 const root = document.getElementById("root");
 
@@ -39,6 +41,7 @@ const duplicateFinderCleanup = installDuplicateFinder();
 const diskMapCleanup = installDiskMap();
 const imageToolsCleanup = installImageTools();
 const similarPhotosCleanup = installSimilarPhotos();
+const portalCleanup = installPortal();
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
@@ -51,6 +54,7 @@ if (import.meta.hot) {
     diskMapCleanup();
     imageToolsCleanup();
     similarPhotosCleanup();
+    portalCleanup();
     void nativeDropCleanup.then((cleanup) => cleanup());
   });
 }
