@@ -3,6 +3,7 @@ import App from "./App";
 import { installConverters } from "./lib/converters";
 import { installDiskMap } from "./lib/disk-map";
 import { installDuplicateFinder } from "./lib/duplicates";
+import { installFootprints } from "./lib/footprints";
 import { installGlobalSearch } from "./lib/global-search";
 import { installImageThumbnails } from "./lib/thumbnails";
 import { installImageTools } from "./lib/image-tools";
@@ -27,6 +28,7 @@ import "./image-tools.css";
 import "./similar-photos.css";
 import "./portal.css";
 import "./converters.css";
+import "./footprints.css";
 
 const root = document.getElementById("root");
 
@@ -47,6 +49,7 @@ const similarPhotosCleanup = installSimilarPhotos();
 const portalCleanup = installPortal();
 const convertersCleanup = installConverters();
 const terminalActionsCleanup = installTerminalActions();
+const footprintsCleanup = installFootprints();
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
@@ -62,6 +65,7 @@ if (import.meta.hot) {
     portalCleanup();
     convertersCleanup();
     terminalActionsCleanup();
+    footprintsCleanup();
     void nativeDropCleanup.then((cleanup) => cleanup());
   });
 }

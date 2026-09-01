@@ -3,6 +3,7 @@ mod converters;
 mod disk;
 mod duplicates;
 mod fs;
+mod history;
 mod images;
 mod preview;
 mod search;
@@ -15,6 +16,7 @@ mod watch;
 pub fn run() {
     tauri::Builder::default()
         .manage(watch::WatchState::default())
+        .manage(history::HistoryState::default())
         .invoke_handler(tauri::generate_handler![
             archive::preview_zip_archive,
             converters::converter_capabilities,
@@ -32,6 +34,9 @@ pub fn run() {
             fs::trash_entries,
             fs::create_folder,
             fs::open_entry,
+            fs::undo_last_operation,
+            fs::redo_last_operation,
+            history::operation_history,
             images::transform_images,
             preview::preview_entry,
             preview::thumbnail_entry,

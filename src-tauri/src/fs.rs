@@ -1,9 +1,11 @@
+use crate::history::{HistoryAction, HistorySnapshot, HistoryState};
 use serde::Serialize;
 use std::{
     fs,
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
 };
+use tauri::State;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -157,6 +159,86 @@ fn remove_path(path: &Path) -> Result<(), String> {
     }
 }
 
+fn move_exact(source: &Path, destination: &Path) -> Result<(), String> {
+    if !source.exists() {
+        return Err(format!("Source no longer exists: {}", source.display()));
+    }
+    if destination.exists() {
+        return Err(format!("Undo/redo destination already exists: {}", destination.display()));
+    }
+    if let Err(rename_error) = fs::rename(source, destination) {
+        copy_path(source, destination).map_err(|copy_error| {
+            format!("Move failed ({rename_error}); cross-device copy also failed ({copy_error})")
+        })?;
+        remove_path(source)?;
+    }
+    Ok(())
+}
+
+fn apply_history_action(action: &HistoryAction, reverse: bool) -> Result<(), String> {
+    match action {
+        HistoryAction::Rename { from, to } => {
+            let (source, destination) = if reverse { (to, from) } else { (from, to) };
+            move_exact(Path::new(source), Path::new(destination))
+        }
+        HistoryAction::CreateDirectory { path } => {
+            let path = Path::new(path);
+            if reverse {
+                fs::remove_dir(path).map_err(|error| {
+                    format!("Could not undo folder creation. Scout only removes it if still empty: {error}")
+                })
+            } else if path.exists() {
+                Err(format!("Cannot redo folder creation because it already exists: {}", path.display()))
+            } else {
+                fs::create_dir(path).map_err(|error| error.to_string())
+            }
+        }
+        HistoryAction::Copy { pairs } => {
+            if reverse {
+                for (_, destination) in pairs.iter().rev() {
+                    let destination = Path::new(destination);
+                    if destination.exists() {
+                        remove_path(destination)?;
+                    }
+                }
+                Ok(())
+            } else {
+                let mut completed: Vec<PathBuf> = Vec::new();
+                for (source, destination) in pairs {
+                    let source = Path::new(source);
+                    let destination = Path::new(destination);
+                    if destination.exists() {
+                        for path in completed.iter().rev() {
+                            let _ = remove_path(path);
+                        }
+                        return Err(format!("Cannot redo copy because destination exists: {}", destination.display()));
+                    }
+                    if let Err(error) = copy_path(source, destination) {
+                        for path in completed.iter().rev() {
+                            let _ = remove_path(path);
+                        }
+                        return Err(error);
+                    }
+                    completed.push(destination.to_path_buf());
+                }
+                Ok(())
+            }
+        }
+        HistoryAction::Move { pairs } => {
+            if reverse {
+                for (source, destination) in pairs.iter().rev() {
+                    move_exact(Path::new(destination), Path::new(source))?;
+                }
+            } else {
+                for (source, destination) in pairs {
+                    move_exact(Path::new(source), Path::new(destination))?;
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
 #[tauri::command]
 pub fn special_directories() -> Result<SpecialDirectories, String> {
     let home = dirs::home_dir().ok_or_else(|| "Could not resolve the home directory".to_string())?;
@@ -207,57 +289,82 @@ pub fn list_directory(path: String, show_hidden: bool) -> Result<DirectoryListin
 }
 
 #[tauri::command]
-pub fn rename_entry(path: String, new_name: String) -> Result<FsEntry, String> {
+pub fn rename_entry(path: String, new_name: String, history: State<'_, HistoryState>) -> Result<FsEntry, String> {
     validate_name(&new_name)?;
-    let source = PathBuf::from(path);
+    let source = PathBuf::from(&path);
     let parent = source.parent().ok_or_else(|| "Cannot rename this path".to_string())?;
-    let destination = parent.join(new_name);
+    let destination = parent.join(&new_name);
     if destination.exists() {
         return Err("An item with that name already exists".into());
     }
+    let old_name = source.file_name().map(|value| value.to_string_lossy().into_owned()).unwrap_or_else(|| path.clone());
     fs::rename(&source, &destination).map_err(|error| error.to_string())?;
+    history.record(
+        "rename",
+        format!("Renamed {old_name} to {new_name}"),
+        HistoryAction::Rename { from: path_string(&source), to: path_string(&destination) },
+    );
     entry_from_path(&destination)
 }
 
 #[tauri::command]
-pub fn duplicate_entries(paths: Vec<String>) -> Result<Vec<FsEntry>, String> {
+pub fn duplicate_entries(paths: Vec<String>, history: State<'_, HistoryState>) -> Result<Vec<FsEntry>, String> {
     let mut results = Vec::with_capacity(paths.len());
+    let mut pairs = Vec::with_capacity(paths.len());
     for path in paths {
-        let source = PathBuf::from(path);
+        let source = PathBuf::from(&path);
         let parent = source.parent().ok_or_else(|| "Cannot duplicate this path".to_string())?;
         let destination = available_destination(&source, parent);
         copy_path(&source, &destination)?;
+        pairs.push((path_string(&source), path_string(&destination)));
         results.push(entry_from_path(&destination)?);
+    }
+    if !pairs.is_empty() {
+        history.record(
+            "duplicate",
+            format!("Duplicated {} {}", pairs.len(), if pairs.len() == 1 { "item" } else { "items" }),
+            HistoryAction::Copy { pairs },
+        );
     }
     Ok(results)
 }
 
 #[tauri::command]
-pub fn copy_entries(paths: Vec<String>, destination: String) -> Result<Vec<FsEntry>, String> {
+pub fn copy_entries(paths: Vec<String>, destination: String, history: State<'_, HistoryState>) -> Result<Vec<FsEntry>, String> {
     let destination_directory = PathBuf::from(destination);
     if !destination_directory.is_dir() {
         return Err("Copy destination is not a directory".into());
     }
     let mut results = Vec::with_capacity(paths.len());
+    let mut pairs = Vec::with_capacity(paths.len());
     for path in paths {
-        let source = PathBuf::from(path);
+        let source = PathBuf::from(&path);
         let target = available_destination(&source, &destination_directory);
         copy_path(&source, &target)?;
+        pairs.push((path_string(&source), path_string(&target)));
         results.push(entry_from_path(&target)?);
+    }
+    if !pairs.is_empty() {
+        history.record(
+            "copy",
+            format!("Copied {} {}", pairs.len(), if pairs.len() == 1 { "item" } else { "items" }),
+            HistoryAction::Copy { pairs },
+        );
     }
     Ok(results)
 }
 
 #[tauri::command]
-pub fn move_entries(paths: Vec<String>, destination: String) -> Result<Vec<FsEntry>, String> {
+pub fn move_entries(paths: Vec<String>, destination: String, history: State<'_, HistoryState>) -> Result<Vec<FsEntry>, String> {
     let destination_directory = PathBuf::from(destination);
     if !destination_directory.is_dir() {
         return Err("Move destination is not a directory".into());
     }
 
     let mut results = Vec::with_capacity(paths.len());
+    let mut pairs = Vec::new();
     for path in paths {
-        let source = PathBuf::from(path);
+        let source = PathBuf::from(&path);
         if source.parent() == Some(destination_directory.as_path()) {
             results.push(entry_from_path(&source)?);
             continue;
@@ -272,7 +379,15 @@ pub fn move_entries(paths: Vec<String>, destination: String) -> Result<Vec<FsEnt
             })?;
             remove_path(&source)?;
         }
+        pairs.push((path_string(&source), path_string(&target)));
         results.push(entry_from_path(&target)?);
+    }
+    if !pairs.is_empty() {
+        history.record(
+            "move",
+            format!("Moved {} {}", pairs.len(), if pairs.len() == 1 { "item" } else { "items" }),
+            HistoryAction::Move { pairs },
+        );
     }
     Ok(results)
 }
@@ -286,7 +401,7 @@ pub fn trash_entries(paths: Vec<String>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn create_folder(directory: String) -> Result<FsEntry, String> {
+pub fn create_folder(directory: String, history: State<'_, HistoryState>) -> Result<FsEntry, String> {
     let directory = PathBuf::from(directory);
     if !directory.is_dir() {
         return Err("Folder destination is not a directory".into());
@@ -301,10 +416,31 @@ pub fn create_folder(directory: String) -> Result<FsEntry, String> {
             .ok_or_else(|| "Could not find an available folder name".to_string())?
     };
     fs::create_dir(&target).map_err(|error| error.to_string())?;
+    history.record(
+        "create-folder",
+        format!("Created {}", target.file_name().map(|value| value.to_string_lossy()).unwrap_or_default()),
+        HistoryAction::CreateDirectory { path: path_string(&target) },
+    );
     entry_from_path(&target)
 }
 
 #[tauri::command]
 pub fn open_entry(path: String) -> Result<(), String> {
     open::that(path).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn undo_last_operation(history: State<'_, HistoryState>) -> Result<HistorySnapshot, String> {
+    let operation = history.peek_undo().ok_or_else(|| "Nothing to undo".to_string())?;
+    apply_history_action(&operation.action, true)?;
+    history.commit_undo(operation.id)?;
+    history.snapshot()
+}
+
+#[tauri::command]
+pub fn redo_last_operation(history: State<'_, HistoryState>) -> Result<HistorySnapshot, String> {
+    let operation = history.peek_redo().ok_or_else(|| "Nothing to redo".to_string())?;
+    apply_history_action(&operation.action, false)?;
+    history.commit_redo(operation.id)?;
+    history.snapshot()
 }
