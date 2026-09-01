@@ -1,4 +1,4 @@
-use crate::queue::JobContext;
+use crate::{queue::JobContext, tags};
 use serde::Serialize;
 use std::{
     path::{Path, PathBuf},
@@ -6,6 +6,8 @@ use std::{
     thread,
     time::Duration,
 };
+
+pub(crate) const INTERNAL_TAG_PROGRAM: &str = "@scout/tag";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,6 +64,15 @@ pub(crate) fn run_program_blocking(
     if !item.exists() {
         return Err("Automation item no longer exists".into());
     }
+
+    if program == INTERNAL_TAG_PROGRAM {
+        tags::apply_internal_tag_action(&item_path, &arguments, context)?;
+        return Ok(ProgramRunResult {
+            program,
+            path: item_path,
+        });
+    }
+
     let rendered = arguments
         .iter()
         .map(|argument| render_argument(argument, &item))

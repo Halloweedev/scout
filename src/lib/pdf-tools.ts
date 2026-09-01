@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { enqueueAndWait } from "./operation-queue";
 
 interface PdfMetadataEntry {
   key: string;
@@ -127,8 +128,10 @@ function button(label: string, className = "pdf-secondary") {
 
 async function runOperation(command: string, args: Record<string, unknown>, label: string) {
   try {
-    showToast(`${label}…`);
-    const result = await invoke<PdfOperationResult>(command, args);
+    showToast(`${label} · added to Operations`);
+    const result = await enqueueAndWait<PdfOperationResult>("enqueue_pdf_operation", {
+      request: { operation: command, ...args },
+    });
     closeOverlay();
     showToast(result.paths.length === 1 ? `Created ${basename(result.paths[0])}` : `Created ${result.paths.length} PDFs`);
   } catch (error) {

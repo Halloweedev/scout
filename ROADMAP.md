@@ -72,17 +72,21 @@ M4's implementation baseline is complete. External converter features are enable
 - [x] Live filesystem triggers for enabled rules
 - [x] Dedicated automation watcher pool independent from active browsing
 - [x] Debounced path-targeted live runs with running/cooldown loop suppression
-- [ ] Tag/convert/optimize/archive/script rule actions
+- [x] Tag/convert/optimize/archive/script rule actions
+- [x] Cross-platform Scout-local tags with context-menu editing
 - [x] Shared operation queue core with queued/running/completed/failed/cancelled states
 - [x] Operations activity UI with progress and cancellation controls
 - [x] Cancellation for duplicate scans and folder-size scans
 - [x] Cancellation for similar-photo scans
 - [x] Cancellation for persistent index rebuilds
-- [x] Real child-process cancellation for FFmpeg, Pandoc, and LibreOffice conversions
+- [x] Real child-process cancellation for FFmpeg, Pandoc, LibreOffice, and program/script actions
 - [x] Cancellable ZIP creation/extraction with byte and item progress
-- [ ] Migrate remaining long-running image/PDF/checksum work to the shared queue where beneficial
+- [x] Cancellable image conversion and SHA-256 calculation through Operations
+- [x] PDF mutations integrated with the shared Operations queue
 - [x] Footprints operation history
 - [x] Undo/redo for reversible rename/copy/duplicate/move/new-folder operations
 - [x] Persistent Footprints history across app launches
+
+M5's implementation baseline is complete. Streaming and external-process jobs support in-loop or process-level cancellation. PDF mutations are queued around Scout's existing local lopdf operations.
 
 Native Trash is intentionally excluded from undo until Scout can restore trashed items reliably across macOS, Windows, and Linux.

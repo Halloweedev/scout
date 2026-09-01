@@ -1,6 +1,7 @@
 mod archive;
 mod archive_ops;
 mod automation;
+mod checksum_ops;
 mod converters;
 mod disk;
 mod duplicates;
@@ -8,11 +9,13 @@ mod fs;
 mod history;
 mod images;
 mod pdf;
+mod pdf_ops;
 mod preview;
 mod queue;
 mod scripts;
 mod search;
 mod similar;
+mod tags;
 mod terminal;
 mod utilities;
 mod watch;
@@ -37,6 +40,7 @@ pub fn run() {
             automation::enqueue_automation_rule,
             automation::enqueue_automation_trigger,
             automation::sync_automation_watches,
+            checksum_ops::enqueue_checksum_entries,
             converters::converter_capabilities,
             converters::convert_media,
             converters::convert_with_pandoc,
@@ -71,6 +75,7 @@ pub fn run() {
             pdf::compress_pdf,
             pdf::strip_pdf_metadata,
             pdf::merge_pdfs,
+            pdf_ops::enqueue_pdf_operation,
             preview::preview_entry,
             preview::thumbnail_entry,
             queue::operation_queue,
@@ -83,6 +88,9 @@ pub fn run() {
             search::record_index_open,
             similar::find_similar_photos,
             similar::enqueue_similar_photo_scan,
+            tags::tags_for_paths,
+            tags::add_tags,
+            tags::remove_tags,
             terminal::open_terminal,
             utilities::checksum_entries,
             utilities::preview_batch_rename,

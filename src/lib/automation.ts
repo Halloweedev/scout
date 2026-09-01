@@ -47,7 +47,8 @@ interface AutomationRunResult {
   affected: number;
 }
 
-type ActionType = AutomationAction["type"];
+const INTERNAL_TAG_PROGRAM = "@scout/tag";
+type ActionType = AutomationAction["type"] | "tag";
 
 interface DraftRule {
   id: number | null;
@@ -71,6 +72,7 @@ interface DraftRule {
   scriptProgram: string;
   scriptArguments: string;
   scriptWorkingDirectory: string;
+  tagNames: string;
 }
 
 const CONVERTER_TARGETS: Record<ConverterEngine, Array<[string, string]>> = {
@@ -107,6 +109,19 @@ function bytesLabel(bytes: number | null) {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
+function isInternalTagAction(action: AutomationAction) {
+  return action.type === "script" && action.program === INTERNAL_TAG_PROGRAM;
+}
+
+function parseTags(value: string) {
+  const tags: string[] = [];
+  for (const raw of value.split(/[\n,]/)) {
+    const tag = raw.trim();
+    if (tag && !tags.some((existing) => existing.toLocaleLowerCase() === tag.toLocaleLowerCase())) tags.push(tag);
+  }
+  return tags;
+}
+
 function newDraft(): DraftRule {
   return {
     id: null,
@@ -130,6 +145,7 @@ function newDraft(): DraftRule {
     scriptProgram: "",
     scriptArguments: "{path}",
     scriptWorkingDirectory: "",
+    tagNames: "",
   };
 }
 
@@ -147,6 +163,7 @@ function actionDestination(action: AutomationAction) {
 }
 
 function draftFromRule(rule: AutomationRule): DraftRule {
+  const tagAction = isInternalTagAction(rule.action);
   return {
     id: rule.id,
     name: rule.name,
@@ -158,7 +175,7 @@ function draftFromRule(rule: AutomationRule): DraftRule {
     kind: rule.kind,
     minSizeMb: rule.minSize == null ? "" : String(rule.minSize / (1024 * 1024)),
     maxSizeMb: rule.maxSize == null ? "" : String(rule.maxSize / (1024 * 1024)),
-    actionType: rule.action.type,
+    actionType: tagAction ? "tag" : rule.action.type,
     actionValue: rule.action.type === "rename" ? rule.action.template : actionDestination(rule.action),
     imageFormat: rule.action.type === "image" ? rule.action.format : "webp",
     imageMaxWidth: rule.action.type === "image" && rule.action.maxWidth != null ? String(rule.action.maxWidth) : "",
@@ -166,9 +183,10 @@ function draftFromRule(rule: AutomationRule): DraftRule {
     imageQuality: rule.action.type === "image" && rule.action.quality != null ? String(rule.action.quality) : "88",
     converterEngine: rule.action.type === "convert" ? rule.action.engine : "ffmpeg",
     converterTarget: rule.action.type === "convert" ? rule.action.target : "mp4",
-    scriptProgram: rule.action.type === "script" ? rule.action.program : "",
-    scriptArguments: rule.action.type === "script" ? rule.action.arguments.join("\n") : "{path}",
-    scriptWorkingDirectory: rule.action.type === "script" ? rule.action.workingDirectory ?? "" : "",
+    scriptProgram: rule.action.type === "script" && !tagAction ? rule.action.program : "",
+    scriptArguments: rule.action.type === "script" && !tagAction ? rule.action.arguments.join("\n") : "{path}",
+    scriptWorkingDirectory: rule.action.type === "script" && !tagAction ? rule.action.workingDirectory ?? "" : "",
+    tagNames: rule.action.type === "script" && tagAction ? rule.action.arguments.join(", ") : "",
   };
 }
 
@@ -218,6 +236,13 @@ function payloadFromDraft(current: DraftRule) {
       program: current.scriptProgram,
       arguments: current.scriptArguments.split(/\r?\n/).map((value) => value.trim()).filter(Boolean),
       workingDirectory: current.scriptWorkingDirectory.trim() || null,
+    };
+  } else if (current.actionType === "tag") {
+    action = {
+      type: "script",
+      program: INTERNAL_TAG_PROGRAM,
+      arguments: parseTags(current.tagNames),
+      workingDirectory: null,
     };
   } else {
     action = { type: current.actionType, destination: current.actionValue };
@@ -398,7 +423,7 @@ function renderEditor(container: HTMLElement) {
   const actionSelect = selectField(
     "Action",
     current.actionType,
-    [["move", "Move to folder"], ["copy", "Copy to folder"], ["rename", "Rename"], ["archive", "Archive to ZIP"], ["image", "Optimize / convert image"], ["convert", "Convert media / document"], ["script", "Run program / script"]],
+    [["move", "Move to folder"], ["copy", "Copy to folder"], ["rename", "Rename"], ["tag", "Add tags"], ["archive", "Archive to ZIP"], ["image", "Optimize / convert image"], ["convert", "Convert media / document"], ["script", "Run program / script"]],
     (value) => {
       current.actionType = value as DraftRule["actionType"];
       if (current.actionType === "rename") current.actionValue = "{stem}-sorted.{ext}";
@@ -408,7 +433,7 @@ function renderEditor(container: HTMLElement) {
     },
   );
   actionGrid.append(actionSelect);
-  if (current.actionType !== "script") {
+  if (current.actionType !== "script" && current.actionType !== "tag") {
     const actionValue = textField(
       current.actionType === "rename" ? "Rename template" : "Destination folder",
       current.actionValue,
@@ -418,6 +443,10 @@ function renderEditor(container: HTMLElement) {
     actionGrid.append(actionValue);
   }
   form.append(actionGrid);
+
+  if (current.actionType === "tag") {
+    form.append(textField("Tags", current.tagNames, (value) => { current.tagNames = value; }, "important, invoice"));
+  }
 
   if (current.actionType === "image") {
     const imageGrid = element("div", "automation-grid");
@@ -456,6 +485,8 @@ function renderEditor(container: HTMLElement) {
   const hint = element("div", "automation-hint");
   if (current.actionType === "rename") {
     hint.textContent = "Rename placeholders: {name}, {stem}, {ext}, {n}.";
+  } else if (current.actionType === "tag") {
+    hint.textContent = "Tags are stored locally by Scout and work on files or folders across macOS, Windows, and Linux. Separate tags with commas.";
   } else if (current.actionType === "image") {
     hint.textContent = "Image rules require files. Outputs are created outside the watched folder through Scout’s cancellable image engine.";
   } else if (current.actionType === "archive") {

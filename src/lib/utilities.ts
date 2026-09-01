@@ -105,11 +105,11 @@ async function openChecksums() {
 
   const body = createOverlay("SHA-256 checksums");
   const loading = element("div", "utility-loading");
-  loading.textContent = "Calculating checksums…";
+  loading.textContent = "Added to Operations…";
   body.append(loading);
 
   try {
-    const results = await invoke<ChecksumResult[]>("checksum_entries", { paths });
+    const results = await enqueueAndWait<ChecksumResult[]>("enqueue_checksum_entries", { paths });
     if (!overlay) return;
     const list = element("div", "checksum-list");
     for (const result of results) {
