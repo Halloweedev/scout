@@ -57,9 +57,9 @@ function close() {
   overlay = null;
 }
 
-function splitItems(items: FolderSizeItem[]) {
+function splitItems(items: FolderSizeItem[]): [FolderSizeItem[], FolderSizeItem[]] {
   const total = items.reduce((sum, item) => sum + item.size, 0);
-  if (items.length <= 1 || total <= 0) return [items, []] as const;
+  if (items.length <= 1 || total <= 0) return [items, []];
   let running = 0;
   let split = 1;
   let bestDistance = Number.POSITIVE_INFINITY;
@@ -73,7 +73,7 @@ function splitItems(items: FolderSizeItem[]) {
       break;
     }
   }
-  return [items.slice(0, split), items.slice(split)] as const;
+  return [items.slice(0, split), items.slice(split)];
 }
 
 function layout(items: FolderSizeItem[], x: number, y: number, width: number, height: number): Rect[] {
