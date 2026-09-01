@@ -1,0 +1,322 @@
+.automation-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(18px);
+}
+
+.automation-sheet {
+  width: min(1040px, calc(100vw - 56px));
+  height: min(760px, calc(100vh - 56px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  background: rgba(17, 17, 18, 0.96);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.48);
+}
+
+.automation-header {
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 22px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.automation-title {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.automation-subtitle {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 12px;
+}
+
+.automation-header-actions,
+.automation-actions,
+.automation-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.automation-header-button,
+.automation-primary,
+.automation-secondary,
+.automation-danger {
+  min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.88);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.automation-primary {
+  background: rgba(255, 255, 255, 0.92);
+  color: #111;
+}
+
+.automation-danger {
+  margin-left: auto;
+  color: rgba(255, 165, 165, 0.92);
+}
+
+.automation-header-button:hover,
+.automation-secondary:hover,
+.automation-danger:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.automation-header-button:disabled,
+.automation-primary:disabled,
+.automation-secondary:disabled,
+.automation-danger:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.automation-body {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+}
+
+.automation-rule-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.automation-rule-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 11px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.automation-rule-row:hover,
+.automation-rule-row.selected {
+  background: rgba(255, 255, 255, 0.065);
+}
+
+.automation-rule-main,
+.automation-preview-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.automation-rule-name,
+.automation-preview-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.automation-rule-path,
+.automation-preview-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 11px;
+}
+
+.automation-rule-state {
+  flex: 0 0 auto;
+  color: rgba(255, 255, 255, 0.36);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.automation-rule-state.enabled {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.automation-list-empty,
+.automation-editor-empty,
+.automation-preview-empty {
+  padding: 18px;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 12px;
+}
+
+.automation-editor {
+  min-height: 0;
+  overflow: auto;
+  padding: 22px;
+}
+
+.automation-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.automation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.automation-action-grid {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.automation-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.automation-field-label {
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.automation-input,
+.automation-select {
+  width: 100%;
+  min-height: 38px;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  padding: 0 11px;
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(255, 255, 255, 0.9);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.automation-input:focus,
+.automation-select:focus {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.065);
+}
+
+.automation-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+}
+
+.automation-hint,
+.automation-status,
+.automation-preview-summary {
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.automation-actions {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.automation-status {
+  min-height: 17px;
+  margin-top: 12px;
+}
+
+.automation-preview {
+  margin-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding-top: 14px;
+}
+
+.automation-preview-list {
+  margin-top: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.automation-preview-row {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.automation-preview-row:last-child {
+  border-bottom: 0;
+}
+
+.automation-preview-meta {
+  flex: 0 0 auto;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 11px;
+}
+
+.automation-sidebar-count {
+  margin-left: auto;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .automation-backdrop {
+    padding: 12px;
+  }
+
+  .automation-sheet {
+    width: calc(100vw - 24px);
+    height: calc(100vh - 24px);
+  }
+
+  .automation-body {
+    grid-template-columns: 1fr;
+  }
+
+  .automation-rule-list {
+    max-height: 180px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .automation-grid,
+  .automation-action-grid {
+    grid-template-columns: 1fr;
+  }
+}

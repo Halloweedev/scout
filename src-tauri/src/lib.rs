@@ -1,5 +1,6 @@
 mod archive;
 mod archive_ops;
+mod automation;
 mod converters;
 mod disk;
 mod duplicates;
@@ -21,10 +22,17 @@ pub fn run() {
         .manage(watch::WatchState::default())
         .manage(history::HistoryState::default())
         .manage(queue::OperationQueueState::default())
+        .manage(automation::AutomationState::default())
         .invoke_handler(tauri::generate_handler![
             archive::preview_zip_archive,
             archive_ops::enqueue_zip_creation,
             archive_ops::enqueue_zip_extraction,
+            automation::automation_rules,
+            automation::save_automation_rule,
+            automation::delete_automation_rule,
+            automation::set_automation_rule_enabled,
+            automation::preview_automation_rule,
+            automation::enqueue_automation_rule,
             converters::converter_capabilities,
             converters::convert_media,
             converters::convert_with_pandoc,

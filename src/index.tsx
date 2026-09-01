@@ -1,5 +1,6 @@
 import { render } from "solid-js/web";
 import App from "./App";
+import { installAutomation } from "./lib/automation";
 import { installConverters } from "./lib/converters";
 import { installDiskMap } from "./lib/disk-map";
 import { installDuplicateFinder } from "./lib/duplicates";
@@ -33,6 +34,7 @@ import "./converters.css";
 import "./footprints.css";
 import "./pdf-tools.css";
 import "./operation-queue.css";
+import "./automation.css";
 
 const root = document.getElementById("root");
 
@@ -56,6 +58,7 @@ const terminalActionsCleanup = installTerminalActions();
 const footprintsCleanup = installFootprints();
 const pdfToolsCleanup = installPdfTools();
 const operationQueueCleanup = installOperationQueue();
+const automationCleanup = installAutomation();
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
@@ -74,6 +77,7 @@ if (import.meta.hot) {
     footprintsCleanup();
     pdfToolsCleanup();
     operationQueueCleanup();
+    automationCleanup();
     void nativeDropCleanup.then((cleanup) => cleanup());
   });
 }
