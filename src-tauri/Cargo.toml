@@ -29,3 +29,4 @@ zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 walkdir = "2.5.0"
 sha2 = "0.10"
+lopdf = { version = "0.44.0", default-features = false }
