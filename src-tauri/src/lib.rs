@@ -7,6 +7,7 @@ mod history;
 mod images;
 mod pdf;
 mod preview;
+mod queue;
 mod search;
 mod similar;
 mod terminal;
@@ -18,6 +19,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(watch::WatchState::default())
         .manage(history::HistoryState::default())
+        .manage(queue::OperationQueueState::default())
         .invoke_handler(tauri::generate_handler![
             archive::preview_zip_archive,
             converters::converter_capabilities,
@@ -25,7 +27,9 @@ pub fn run() {
             converters::convert_with_pandoc,
             converters::convert_with_libreoffice,
             disk::analyze_folder_sizes,
+            disk::enqueue_folder_size_scan,
             duplicates::find_duplicate_files,
+            duplicates::enqueue_duplicate_scan,
             fs::special_directories,
             fs::list_directory,
             fs::rename_entry,
@@ -50,6 +54,9 @@ pub fn run() {
             pdf::merge_pdfs,
             preview::preview_entry,
             preview::thumbnail_entry,
+            queue::operation_queue,
+            queue::cancel_operation,
+            queue::clear_finished_operations,
             search::index_status,
             search::rebuild_index,
             search::search_index,
