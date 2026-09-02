@@ -1,0 +1,232 @@
+/* Final shared interaction layer. Keep Scout monochrome; blue is reserved for focused selection and system-like choice states. */
+
+:root {
+  --scout-focus-ring: rgba(10, 132, 255, 0.42);
+  --scout-focused-selection: rgba(10, 132, 255, 0.74);
+  --scout-inactive-selection: rgba(255, 255, 255, 0.105);
+  --scout-hover: rgba(255, 255, 255, 0.052);
+  --scout-pressed: rgba(255, 255, 255, 0.085);
+}
+
+button,
+input,
+[role="button"],
+[role="menuitem"],
+[role="menuitemradio"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+input:focus-visible,
+[role="button"]:focus-visible,
+[role="menuitem"]:focus-visible,
+[role="menuitemradio"]:focus-visible {
+  outline: 2px solid var(--scout-focus-ring);
+  outline-offset: 1px;
+}
+
+.icon-button,
+.sidebar-item,
+.sidebar-section-action,
+.workspace-delete,
+.new-tab-button,
+.pane-close-button,
+.breadcrumb,
+.tab,
+.view-menu button,
+.toolbar-dropdown-menu button,
+.context-menu button,
+.search-clear {
+  transition: background 90ms ease, border-color 90ms ease, color 90ms ease, opacity 90ms ease, transform 90ms ease;
+}
+
+.icon-button:active:not(:disabled),
+.sidebar-item:active,
+.sidebar-section-action:active,
+.new-tab-button:active,
+.pane-close-button:active,
+.breadcrumb:active,
+.view-menu button:active,
+.toolbar-dropdown-menu button:active:not(:disabled),
+.context-menu button:active:not(:disabled) {
+  background: var(--scout-pressed);
+}
+
+/* Focused selection behaves consistently across standard Finder-like views. */
+.pane-grid:not(.view-columns) .explorer-pane.active .file-list .pane-file-row.selected,
+.pane-grid:not(.view-columns) .explorer-pane.active .file-grid .pane-file-row.selected {
+  background: var(--scout-focused-selection);
+  color: #fff;
+}
+
+.pane-grid:not(.view-columns) .explorer-pane:not(.active) .pane-file-row.selected {
+  background: var(--scout-inactive-selection);
+  color: #dedee2;
+}
+
+.pane-grid:not(.view-columns) .explorer-pane.active .pane-file-row.selected .muted-cell,
+.pane-grid:not(.view-columns) .explorer-pane.active .pane-file-row.selected .file-icon {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Gallery keeps its large preview surface calm while still showing focus. */
+.explorer-pane.active .file-gallery .pane-file-row.gallery.selected {
+  border-color: rgba(10, 132, 255, 0.5);
+  background: rgba(10, 132, 255, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(10, 132, 255, 0.12);
+}
+
+.file-header > div {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  border-radius: 4px;
+}
+
+.file-header > div:hover {
+  color: #9d9da4;
+}
+
+/* Search and toolbar controls use the same visual geometry. */
+.search-box {
+  height: 30px;
+  min-height: 30px;
+}
+
+.search-box input {
+  min-width: 0;
+}
+
+.toolbar-view-group,
+.search-box {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.toolbar-dropdown-menu,
+.view-menu,
+.context-menu {
+  overflow: hidden;
+}
+
+.toolbar-dropdown-menu button,
+.view-menu button,
+.context-menu button {
+  cursor: default;
+}
+
+.toolbar-dropdown-menu button:disabled,
+.context-menu button:disabled {
+  opacity: 0.36;
+}
+
+.menu-separator {
+  height: 1px;
+  margin: 5px 7px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.menu-check-slot,
+.view-check {
+  font-variant-numeric: tabular-nums;
+}
+
+kbd {
+  min-width: 20px;
+  margin-left: auto;
+  padding: 1px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #74747a;
+  font: 9px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  text-align: center;
+}
+
+/* Tabs read as navigation, not floating dashboard pills. */
+.tab-strip {
+  padding-inline: 8px;
+}
+
+.tab.active {
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.tab-close {
+  opacity: 0;
+}
+
+.tab:hover .tab-close,
+.tab.active .tab-close,
+.tab-close:focus-visible {
+  opacity: 1;
+}
+
+/* Empty states explain the next action without becoming dashboard cards. */
+.workspace-empty {
+  margin: 1px 8px 0;
+  padding: 5px 8px 8px;
+  color: #515157;
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+
+.empty-state {
+  pointer-events: none;
+  color: #5d5d63;
+  font-size: 11px;
+}
+
+.statusbar {
+  font-variant-numeric: tabular-nums;
+}
+
+.status-error {
+  min-width: 0;
+  overflow: hidden;
+  color: #d28d8d;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Columns: clearer active hierarchy without adding card chrome. */
+.column-browser-column.focused {
+  background: rgba(255, 255, 255, 0.014);
+}
+
+.column-browser-column.focused .column-browser-header {
+  color: #94949a;
+}
+
+.column-browser-row.path-selected:not(.selected) {
+  background: rgba(255, 255, 255, 0.072);
+}
+
+.column-browser-preview {
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.025);
+}
+
+.column-preview-info {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Uniform native-feeling thin scrollbars where supported. */
+.file-area,
+.column-browser,
+.column-browser-list,
+.column-browser-preview,
+.column-preview-text {
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+  scrollbar-width: thin;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
