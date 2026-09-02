@@ -38,6 +38,7 @@ import "./pdf-tools.css";
 import "./operation-queue.css";
 import "./automation.css";
 import "./view-polish.css";
+import "./column-browser.css";
 import "./menu-polish.css";
 
 const root = document.getElementById("root");

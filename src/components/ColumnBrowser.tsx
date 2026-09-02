@@ -22,6 +22,11 @@ interface ColumnBrowserProps {
   onSelection: (paths: string[], anchor: number | null) => void;
   onOpenFile: (entry: FsEntry) => void | Promise<void>;
   onContextMenu: (event: MouseEvent, entry: FsEntry, index: number) => void;
+  renamePath: string | null;
+  renameValue: string;
+  onRenameInput: (value: string) => void;
+  onCommitRename: () => void;
+  onCancelRename: () => void;
 }
 
 const WIDTH_KEY = "scout.columns.width.v1";
@@ -111,10 +116,11 @@ export default function ColumnBrowser(props: ColumnBrowserProps) {
   const [preview, setPreview] = createSignal<PreviewData | null>(null);
   const [previewLoading, setPreviewLoading] = createSignal(false);
   const [previewError, setPreviewError] = createSignal<string | null>(null);
-  const [columnWidth, setColumnWidth] = createSignal<number>(() => {
+  const initialColumnWidth = (() => {
     const value = Number(localStorage.getItem(WIDTH_KEY));
     return Number.isFinite(value) && value >= 190 && value <= 420 ? value : 244;
-  });
+  })();
+  const [columnWidth, setColumnWidth] = createSignal(initialColumnWidth);
   let generation = 0;
   let previewGeneration = 0;
   let scroller: HTMLDivElement | undefined;
@@ -446,7 +452,22 @@ export default function ColumnBrowser(props: ColumnBrowserProps) {
                     }}
                   >
                     <span class="column-browser-icon"><Icon name={iconForEntry(entry)} size={17} weight={entry.kind === "directory" ? "fill" : "regular"} /></span>
-                    <span class="column-browser-name">{entry.name}</span>
+                    <Show when={props.renamePath === entry.path} fallback={<span class="column-browser-name">{entry.name}</span>}>
+                      <input
+                        class="column-browser-rename"
+                        value={props.renameValue}
+                        ref={(input) => queueMicrotask(() => { input.focus(); input.select(); })}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => event.stopPropagation()}
+                        onInput={(event) => props.onRenameInput(event.currentTarget.value)}
+                        onKeyDown={(event) => {
+                          event.stopPropagation();
+                          if (event.key === "Enter") props.onCommitRename();
+                          if (event.key === "Escape") props.onCancelRename();
+                        }}
+                        onBlur={props.onCommitRename}
+                      />
+                    </Show>
                     <Show when={entry.kind === "directory"}><span class="column-browser-disclosure"><Icon name="chevron-right" size={12} /></span></Show>
                   </div>
                 );

@@ -330,3 +330,18 @@
     min-width: 280px;
   }
 }
+
+.column-browser-rename {
+  min-width: 0;
+  height: 21px;
+  flex: 1 1 auto;
+  padding: 0 5px;
+  border: 1px solid rgba(10, 132, 255, 0.9);
+  border-radius: 4px;
+  outline: 0;
+  background: rgba(0, 0, 0, 0.34);
+  color: white;
+  font: inherit;
+  font-size: 11.5px;
+  box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.18);
+}

@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import Icon, { type IconName } from "./components/Icon";
+import ColumnBrowser from "./components/ColumnBrowser";
 import {
   clearDirCache,
   copyEntries,
@@ -56,6 +57,7 @@ interface LoadPaneOptions {
   resetHistory?: boolean;
   syncTab?: boolean;
   silent?: boolean;
+  preserveColumnRoot?: boolean;
 }
 
 interface SavedWorkspace {
@@ -161,6 +163,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = createSignal("");
   const [toolbarMenuOpen, setToolbarMenuOpen] = createSignal(false);
   const [viewMenuOpen, setViewMenuOpen] = createSignal(false);
+  const [columnRoots, setColumnRoots] = createSignal<Record<string, string>>({});
   const [isDragging, setIsDragging] = createSignal(false);
   const [zoom, setZoom] = createSignal(1);
   const [sortBy, setSortBy] = createSignal<"name" | "modified" | "size" | "type">("name");
@@ -261,6 +264,45 @@ export default function App() {
     return panes().find((pane) => pane.id === id) ?? null;
   }
 
+  function comparablePath(path: string) {
+    const normalized = path.replace(/\\/g, "/").replace(/\\/$/, "");
+    return /^[a-zA-Z]:/.test(normalized) ? normalized.toLowerCase() : normalized || "/";
+  }
+
+  function pathWithin(root: string, candidate: string) {
+    const a = comparablePath(root);
+    const b = comparablePath(candidate);
+    return a === b || b.startsWith(a === "/" ? "/" : `${a}/`);
+  }
+
+  function remapPathPrefix(value: string, source: string, destination: string) {
+    if (!pathWithin(source, value)) return value;
+    const sourceNormalized = comparablePath(source);
+    const valueNormalized = comparablePath(value);
+    if (sourceNormalized === valueNormalized) return destination;
+    const suffix = value.replace(/\\/g, "/").slice(source.replace(/\\/g, "/").replace(/\\/$/, "").length);
+    const separator = destination.includes("\\") ? "\\" : "/";
+    return `${destination.replace(/[\\/]$/, "")}${suffix.replace(/\//g, separator)}`;
+  }
+
+  function parentDirectory(path: string) {
+    const separator = path.includes("\\") ? "\\" : "/";
+    const trimmed = path.replace(/[\\/]+$/, "");
+    const index = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+    if (index < 0) return path;
+    if (index === 0) return separator;
+    if (index === 2 && /^[a-zA-Z]:/.test(trimmed)) return `${trimmed.slice(0, 2)}${separator}`;
+    return trimmed.slice(0, index);
+  }
+
+  function columnRootFor(pane: PaneState) {
+    return columnRoots()[pane.id] ?? pane.path;
+  }
+
+  function setColumnRoot(paneId: string, path: string) {
+    setColumnRoots((current) => ({ ...current, [paneId]: path }));
+  }
+
   function updatePane(id: string, mutator: (pane: PaneState) => PaneState) {
     setPanes((current) => current.map((pane) => (pane.id === id ? mutator(pane) : pane)));
   }
@@ -330,6 +372,11 @@ export default function App() {
       };
       updatePane(id, () => nextPane);
 
+      if (viewMode() === "columns") {
+        const root = columnRoots()[id];
+        if (!options.preserveColumnRoot || !root || !pathWithin(root, listing.path)) setColumnRoot(id, listing.path);
+      }
+
       if (id === activePaneId()) {
         setActiveListing(listing);
         void watchDirectory(listing.path).catch((reason) => {
@@ -366,6 +413,12 @@ export default function App() {
     if (id) await loadPane(id, path);
   }
 
+  async function navigateColumnDirectory(paneId: string, entry: FsEntry) {
+    const loaded = await loadPane(paneId, entry.path, { preserveColumnRoot: true });
+    if (!loaded) return;
+    updatePane(paneId, (current) => ({ ...current, selected: [entry.path], selectionAnchor: null }));
+  }
+
   async function navigateChild(paneId: string, entry: FsEntry) {
     if (!linkedPanes() || panes().length <= 1) {
       await loadPane(paneId, entry.path);
@@ -384,7 +437,7 @@ export default function App() {
     const pane = activePane();
     if (!pane?.listing?.parentPath) return;
     if (!linkedPanes() || panes().length <= 1) {
-      await loadPane(pane.id, pane.listing.parentPath);
+      await loadPane(pane.id, pane.listing.parentPath, { preserveColumnRoot: viewMode() === "columns" });
       return;
     }
 
@@ -392,7 +445,7 @@ export default function App() {
     await Promise.all(snapshot.map(async (candidate) => {
       const parent = candidate.listing?.parentPath;
       if (!parent) return;
-      await loadPane(candidate.id, parent, { silent: candidate.id !== pane.id, syncTab: candidate.id === pane.id });
+      await loadPane(candidate.id, parent, { silent: candidate.id !== pane.id, syncTab: candidate.id === pane.id, preserveColumnRoot: viewMode() === "columns" });
     }));
     focusPane(pane.id);
   }
@@ -401,7 +454,7 @@ export default function App() {
     const pane = paneById(id);
     if (!pane) return;
     clearDirCache(pane.path);
-    await loadPane(id, pane.path, { pushHistory: false });
+    await loadPane(id, pane.path, { pushHistory: false, preserveColumnRoot: viewMode() === "columns" });
   }
 
   async function reloadActivePane() {
@@ -424,7 +477,7 @@ export default function App() {
     if (!linkedPanes() || panes().length <= 1) {
       const nextIndex = pane.historyIndex + delta;
       const path = pane.history[nextIndex];
-      if (path) await loadPane(pane.id, path, { pushHistory: false, historyIndex: nextIndex });
+      if (path) await loadPane(pane.id, path, { pushHistory: false, historyIndex: nextIndex, preserveColumnRoot: viewMode() === "columns" });
       return;
     }
 
@@ -438,6 +491,7 @@ export default function App() {
         historyIndex: nextIndex,
         silent: candidate.id !== pane.id,
         syncTab: candidate.id === pane.id,
+        preserveColumnRoot: viewMode() === "columns",
       });
     }));
     focusPane(pane.id);
@@ -486,6 +540,7 @@ export default function App() {
       const listing = await listDirectory(path, requestedHidden);
       const pane = paneFromListing(listing);
       setPanes((current) => [...current, pane]);
+      if (viewMode() === "columns") setColumnRoot(pane.id, listing.path);
       setActivePaneId(pane.id);
       setActiveListing(listing);
       syncTabToPane(pane);
@@ -506,6 +561,11 @@ export default function App() {
     if (index < 0) return;
     const remaining = current.filter((pane) => pane.id !== id);
     setPanes(remaining);
+    setColumnRoots((roots) => {
+      const next = { ...roots };
+      delete next[id];
+      return next;
+    });
     if (id === activePaneId()) {
       const next = remaining[Math.min(index, remaining.length - 1)];
       setActivePaneId(next.id);
@@ -522,6 +582,13 @@ export default function App() {
   }
 
   function setView(next: ViewMode) {
+    if (next === "columns") {
+      setColumnRoots((current) => {
+        const roots = { ...current };
+        for (const pane of panes()) roots[pane.id] = pane.path;
+        return roots;
+      });
+    }
     setViewMode(next);
     localStorage.setItem(VIEW_KEY, next);
     setViewMenuOpen(false);
@@ -586,6 +653,7 @@ export default function App() {
     setLinkedPanes(workspace.linkedPanes);
     localStorage.setItem(LINKED_PANES_KEY, workspace.linkedPanes ? "1" : "0");
     setPanes(restored);
+    if (viewMode() === "columns") setColumnRoots(Object.fromEntries(restored.map((pane) => [pane.id, pane.path])));
     setActivePaneId(focused.id);
     setActiveListing(focused.listing);
     syncTabToPane(focused);
@@ -697,11 +765,12 @@ export default function App() {
   function startRename(paneId: string, path: string) {
     const pane = paneById(paneId);
     const entry = pane?.listing?.entries.find((candidate) => candidate.path === path);
-    if (!entry) return;
+    const fallbackName = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+    if (!entry && !fallbackName) return;
     focusPane(paneId);
     setRenamePaneId(paneId);
     setRenamePath(path);
-    setRenameValue(entry.name);
+    setRenameValue(entry?.name ?? fallbackName);
     setContextMenu(null);
     queueMicrotask(() => document.querySelector<HTMLInputElement>(`.explorer-pane.active .rename-input`)?.select());
   }
@@ -715,11 +784,27 @@ export default function App() {
       setRenamePaneId(null);
       return;
     }
+    const before = paneById(paneId);
+    const rootBefore = columnRoots()[paneId];
     try {
-      await renameEntry(path, nextName);
+      const renamed = await renameEntry(path, nextName);
       setRenamePath(null);
       setRenamePaneId(null);
-      await reloadPane(paneId);
+      if (!before) return;
+      const nextPanePath = remapPathPrefix(before.path, path, renamed.path);
+      if (rootBefore) setColumnRoot(paneId, remapPathPrefix(rootBefore, path, renamed.path));
+      updatePane(paneId, (current) => ({
+        ...current,
+        history: current.history.map((item) => remapPathPrefix(item, path, renamed.path)),
+        selected: [renamed.path],
+      }));
+      if (nextPanePath !== before.path) {
+        await loadPane(paneId, nextPanePath, { pushHistory: false, preserveColumnRoot: viewMode() === "columns" });
+        updatePane(paneId, (current) => ({ ...current, selected: [renamed.path] }));
+      } else {
+        await reloadPane(paneId);
+        updatePane(paneId, (current) => ({ ...current, selected: [renamed.path] }));
+      }
     } catch (reason) {
       updatePane(paneId, (pane) => ({ ...pane, error: String(reason) }));
     }
@@ -740,10 +825,13 @@ export default function App() {
   async function trashSelection() {
     const pane = activePane();
     if (!pane?.selected.length) return;
+    const removedAncestor = pane.selected.find((path) => pathWithin(path, pane.path));
+    const fallback = removedAncestor ? parentDirectory(removedAncestor) : null;
     try {
       await trashEntries(pane.selected);
       setContextMenu(null);
-      await reloadPane(pane.id);
+      if (fallback) await loadPane(pane.id, fallback);
+      else await reloadPane(pane.id);
     } catch (reason) {
       updatePane(pane.id, (current) => ({ ...current, error: String(reason) }));
     }
@@ -1063,6 +1151,7 @@ export default function App() {
                 <span class="pane-path" title={pane.path}>{pane.path}</span>
                 <button class="pane-close-button always-visible" onClick={(event) => { event.stopPropagation(); removePane(pane.id); }} aria-label="Close pane"><Icon name="close" size={12} /></button>
               </div>
+              <Show when={viewMode() === "columns"} fallback={<>
               <main
                 class="file-area"
                 classList={{ loading: pane.loading, dragging: isDragging() }}
@@ -1146,6 +1235,37 @@ export default function App() {
                 <Show when={!pane.loading && (pane.listing?.entries.length ?? 0) === 0}><div class="empty-state">This folder is empty.</div></Show>
                 <Show when={!!searchQuery() && !filteredEntries().length}><div class="empty-state">No matches for “{searchQuery()}”.</div></Show>
               </main>
+              </>}>
+                <main class="file-area column-file-area" classList={{ loading: pane.loading }}>
+                  <Show when={pane.loading}><div class="directory-loading" aria-label="Loading folder"><span /></div></Show>
+                  <ColumnBrowser
+                    paneId={pane.id}
+                    rootPath={columnRootFor(pane)}
+                    path={pane.path}
+                    listing={pane.listing}
+                    showHidden={showHidden()}
+                    selected={pane.selected}
+                    active={pane.id === activePaneId()}
+                    sortBy={sortBy()}
+                    sortDir={sortDir()}
+                    query={searchQuery()}
+                    renamePath={renamePaneId() === pane.id ? renamePath() : null}
+                    renameValue={renameValue()}
+                    onRenameInput={setRenameValue}
+                    onCommitRename={() => void commitRename()}
+                    onCancelRename={() => { setRenamePath(null); setRenamePaneId(null); }}
+                    onFocus={() => focusPane(pane.id)}
+                    onNavigateDirectory={(entry) => navigateColumnDirectory(pane.id, entry)}
+                    onSelection={(paths, anchor) => updatePane(pane.id, (current) => ({ ...current, selected: paths, selectionAnchor: anchor }))}
+                    onOpenFile={(entry) => openEntry(entry.path)}
+                    onContextMenu={(event, entry, index) => {
+                      focusPane(pane.id);
+                      if (!pane.selected.includes(entry.path)) updatePane(pane.id, (current) => ({ ...current, selected: [entry.path], selectionAnchor: index }));
+                      setContextMenu({ x: event.clientX, y: event.clientY, path: entry.path, paneId: pane.id });
+                    }}
+                  />
+                </main>
+              </Show>
             </section>
           )}</For>
         </div>

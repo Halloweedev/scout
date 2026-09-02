@@ -24,8 +24,11 @@ function formatBytes(value: number | null) {
 
 function selectedPath() {
   const row = document.querySelector<HTMLElement>(".file-row.selected");
+  if (!row) return null;
+  const directPath = row.dataset.entryPath;
+  if (directPath) return directPath;
   const listing = getActiveListing();
-  if (!row || !listing) return null;
+  if (!listing) return null;
   const index = Number(row.dataset.entryIndex);
   if (!Number.isInteger(index)) return null;
   return listing.entries[index]?.path ?? null;

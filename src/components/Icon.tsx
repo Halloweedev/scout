@@ -4,6 +4,7 @@ import {
   ArrowRightIcon as ArrowRight,
   ArrowUpIcon as ArrowUp,
   CaretDownIcon as CaretDown,
+  CaretRightIcon as CaretRight,
   XIcon as X,
   CopyIcon as Copy,
   MonitorIcon as Monitor,
@@ -40,6 +41,7 @@ export type IconName =
   | "arrow-right"
   | "arrow-up"
   | "chevron-down"
+  | "chevron-right"
   | "close"
   | "copy"
   | "desktop"
@@ -96,6 +98,8 @@ export default function Icon(props: IconProps) {
       return <ArrowUp width={dim()} height={dim()} weight={weight()} class={cls()} />;
     case "chevron-down":
       return <CaretDown width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "chevron-right":
+      return <CaretRight width={dim()} height={dim()} weight={weight()} class={cls()} />;
     case "close":
       return <X width={dim()} height={dim()} weight={weight()} class={cls()} />;
     case "copy":
