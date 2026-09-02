@@ -19,6 +19,7 @@ interface ColumnBrowserProps {
   query: string;
   onFocus: () => void;
   onNavigateDirectory: (entry: FsEntry) => void | Promise<void>;
+  onOpenDirectoryInNewTab: (entry: FsEntry) => void | Promise<void>;
   onSelection: (paths: string[], anchor: number | null) => void;
   onOpenFile: (entry: FsEntry) => void | Promise<void>;
   onContextMenu: (event: MouseEvent, entry: FsEntry, index: number) => void;
@@ -460,6 +461,13 @@ export default function ColumnBrowser(props: ColumnBrowserProps) {
                       event.preventDefault();
                       event.stopPropagation();
                       if (entry.kind !== "directory") void props.onOpenFile(entry);
+                    }}
+                    onAuxClick={(event) => {
+                      if (event.button !== 1 || entry.kind !== "directory") return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      props.onFocus();
+                      void props.onOpenDirectoryInNewTab(entry);
                     }}
                     onContextMenu={(event) => {
                       event.preventDefault();
