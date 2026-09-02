@@ -3,6 +3,7 @@ mod archive_ops;
 mod automation;
 mod checksum_ops;
 mod converters;
+mod directory;
 mod disk;
 mod duplicates;
 mod fs;
@@ -48,6 +49,8 @@ pub fn run() {
             converters::enqueue_media_conversion,
             converters::enqueue_pandoc_conversion,
             converters::enqueue_libreoffice_conversion,
+            directory::list_directory_fast,
+            directory::list_directory_full,
             disk::analyze_folder_sizes,
             disk::enqueue_folder_size_scan,
             duplicates::find_duplicate_files,
