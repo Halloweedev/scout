@@ -209,6 +209,7 @@ fn remove_path(path: &Path) -> Result<(), String> {
 fn cleanup_copies(pairs: &[(String, String)]) {
     for (_, destination) in pairs.iter().rev() {
         let path = Path::new(destination);
+        let _ = tags::delete_tag_path(path);
         if path.exists() {
             let _ = remove_path(path);
         }
@@ -274,8 +275,8 @@ fn apply_history_action(action: &HistoryAction, reverse: bool) -> Result<(), Str
                 for (_, destination) in pairs.iter().rev() {
                     let destination = Path::new(destination);
                     if destination.exists() {
-                        remove_path(destination)?;
                         let _ = tags::delete_tag_path(destination);
+                        remove_path(destination)?;
                     }
                 }
                 Ok(())
@@ -387,7 +388,13 @@ pub fn duplicate_entries(paths: Vec<String>, history: State<'_, HistoryState>) -
     let mut pairs = Vec::with_capacity(paths.len());
     for path in paths {
         let source = PathBuf::from(&path);
-        let parent = source.parent().ok_or_else(|| "Cannot duplicate this path".to_string())?;
+        let parent = match source.parent() {
+            Some(parent) => parent,
+            None => {
+                cleanup_copies(&pairs);
+                return Err("Cannot duplicate this path".into());
+            }
+        };
         let destination = available_destination(&source, parent);
         if let Err(error) = copy_path(&source, &destination) {
             cleanup_copies(&pairs);
@@ -397,6 +404,7 @@ pub fn duplicate_entries(paths: Vec<String>, history: State<'_, HistoryState>) -
         match entry_from_path(&destination) {
             Ok(entry) => results.push(entry),
             Err(error) => {
+                let _ = tags::delete_tag_path(&destination);
                 let _ = remove_path(&destination);
                 cleanup_copies(&pairs);
                 return Err(error);
@@ -424,7 +432,10 @@ pub fn copy_entries(paths: Vec<String>, destination: String, history: State<'_, 
     let mut pairs = Vec::with_capacity(paths.len());
     for path in paths {
         let source = PathBuf::from(&path);
-        validate_transfer_destination(&source, &destination_directory, "copy")?;
+        if let Err(error) = validate_transfer_destination(&source, &destination_directory, "copy") {
+            cleanup_copies(&pairs);
+            return Err(error);
+        }
         let target = available_destination(&source, &destination_directory);
         if let Err(error) = copy_path(&source, &target) {
             cleanup_copies(&pairs);
@@ -434,6 +445,7 @@ pub fn copy_entries(paths: Vec<String>, destination: String, history: State<'_, 
         match entry_from_path(&target) {
             Ok(entry) => results.push(entry),
             Err(error) => {
+                let _ = tags::delete_tag_path(&target);
                 let _ = remove_path(&target);
                 cleanup_copies(&pairs);
                 return Err(error);
