@@ -56,7 +56,6 @@ pub fn run() {
             duplicates::find_duplicate_files,
             duplicates::enqueue_duplicate_scan,
             fs::special_directories,
-            fs::list_directory,
             fs::rename_entry,
             fs::duplicate_entries,
             fs::copy_entries,

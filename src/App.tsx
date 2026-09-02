@@ -182,6 +182,7 @@ export default function App() {
     return "list";
   })());
   const [searchQuery, setSearchQuery] = createSignal("");
+  const [startupError, setStartupError] = createSignal<string | null>(null);
   const [locationEditing, setLocationEditing] = createSignal(false);
   const [locationValue, setLocationValue] = createSignal("");
   const [toolbarMenuOpen, setToolbarMenuOpen] = createSignal(false);
@@ -803,7 +804,9 @@ export default function App() {
         if (activePaneId() === pane.id) setActiveListing(hydrated);
       }).catch(() => {});
     }
-    await watchDirectory(focused.path);
+    await watchDirectory(focused.path).catch((reason) => {
+      updatePane(focused.id, (current) => ({ ...current, error: String(reason) }));
+    });
   }
 
   function selectEntry(event: MouseEvent, paneId: string, entry: FsEntry, index: number) {
@@ -1066,15 +1069,19 @@ export default function App() {
 
   async function handleKeyDown(event: KeyboardEvent) {
     if (renamePath()) return;
-    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
     const modifier = event.metaKey || event.ctrlKey;
     const key = event.key.toLowerCase();
-    const selected = activeSelected();
 
+    // Location entry is a global file-manager command, even when Search is focused.
     if (modifier && key === "l") {
       event.preventDefault();
       startLocationEdit();
-    } else if (modifier && key === "f") {
+      return;
+    }
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+    const selected = activeSelected();
+
+    if (modifier && key === "f") {
       event.preventDefault();
       searchInput?.focus();
       searchInput?.select();
@@ -1182,12 +1189,9 @@ export default function App() {
     if (path) void navigate(path);
   }
 
-  onMount(async () => {
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("click", closeContextMenu);
-    window.addEventListener("scout:navigate", handleScoutNavigate);
+  async function initializeApp() {
+    setStartupError(null);
     try {
-      stopFilesystemListener = await listen("scout-fs-change", scheduleFilesystemRefresh);
       const dirs = await getSpecialDirectories();
       setSpecial(dirs);
       const first = await listDirectory(dirs.home, showHidden());
@@ -1204,11 +1208,24 @@ export default function App() {
         updatePane(active, (candidate) => candidate.path === hydrated.path ? { ...candidate, listing: hydrated } : candidate);
         if (paneById(active)?.path === hydrated.path) setActiveListing(hydrated);
       }).catch(() => {});
-      await watchDirectory(first.path);
+      void watchDirectory(first.path).catch((reason) => {
+        updatePane(pane.id, (current) => ({ ...current, error: String(reason) }));
+      });
     } catch (reason) {
-      const pane = activePane();
-      if (pane) updatePane(pane.id, (current) => ({ ...current, error: String(reason) }));
+      setStartupError(String(reason));
     }
+  }
+
+  onMount(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("click", closeContextMenu);
+    window.addEventListener("scout:navigate", handleScoutNavigate);
+    void listen("scout-fs-change", scheduleFilesystemRefresh)
+      .then((cleanup) => { stopFilesystemListener = cleanup; })
+      .catch(() => {
+        // Browsing remains usable even if live refresh registration is unavailable.
+      });
+    void initializeApp();
   });
 
   onCleanup(() => {
@@ -1326,7 +1343,7 @@ export default function App() {
             <div class="search-box">
               <Icon name="search" size={14} />
               <input ref={(node) => { searchInput = node; }} placeholder="Search" value={searchQuery()} onInput={(e) => setSearchQuery(e.currentTarget.value)} aria-label="Filter current folder" />
-              <Show when={searchQuery()}><button class="search-clear" onClick={() => setSearchQuery("")}><Icon name="close" size={12} /></button></Show>
+              <Show when={searchQuery()}><button class="search-clear" onClick={() => setSearchQuery("")} aria-label="Clear folder filter"><Icon name="close" size={12} /></button></Show>
             </div>
             <div class="toolbar-view-group">
               <button class="icon-button view-cycle" onClick={cycleViewMode} aria-label="Cycle view" title={`View: ${viewMode()}`}>
@@ -1405,7 +1422,18 @@ export default function App() {
           <button class="new-tab-button" onClick={newTab} aria-label="New tab"><Icon name="plus" size={14} /></button>
         </div>
 
-        <div class={`pane-grid panes-${panes().length} view-${viewMode()}`}>
+        <div class={`pane-grid panes-${Math.max(1, panes().length)} view-${viewMode()}`}>
+          <Show when={panes().length === 0}>
+            <div class="startup-state">
+              <Show when={startupError()} fallback={<><span class="startup-spinner" /><strong>Opening your files…</strong></>}>
+                {(message) => <>
+                  <strong>Scout could not open your home folder.</strong>
+                  <span class="startup-message">{message()}</span>
+                  <button class="startup-retry" onClick={() => void initializeApp()}>Retry</button>
+                </>}
+              </Show>
+            </div>
+          </Show>
           <For each={panes()}>{(pane) => (
             <section class="explorer-pane" classList={{ active: pane.id === activePaneId() }} data-pane-path={pane.path} onPointerDown={() => focusPane(pane.id)}>
               <div class="pane-chrome glass-pane-chrome">
@@ -1551,6 +1579,16 @@ export default function App() {
 
       <Show when={contextMenu()}>{(menu) => (
         <div class="context-menu glass-surface" style={{ left: `${menu().x}px`, top: `${menu().y}px` }} onClick={(event) => event.stopPropagation()}>
+          <Show when={paneById(menu().paneId)?.listing?.entries.find((entry) => entry.path === menu().path)}>{(entry) => (
+            <Show when={entry().kind === "directory"}>
+              <button onClick={() => { focusPane(menu().paneId); setContextMenu(null); void openDirectoryInNewTab(entry()); }}><Icon name="folder" size={14} />Open in New Tab</button>
+              <button
+                disabled={bookmarks().some((bookmark) => comparablePath(bookmark.path) === comparablePath(entry().path))}
+                onClick={() => { addBookmark(entry().path); setContextMenu(null); }}
+              ><Icon name="plus" size={14} />Bookmark Folder</button>
+              <div class="menu-separator" />
+            </Show>
+          )}</Show>
           <button onClick={() => { focusPane(menu().paneId); setClipboard({ mode: "copy", paths: paneById(menu().paneId)?.selected ?? [] }); setContextMenu(null); }}><Icon name="copy" size={14} />Copy</button>
           <button onClick={() => { focusPane(menu().paneId); setClipboard({ mode: "move", paths: paneById(menu().paneId)?.selected ?? [] }); setContextMenu(null); }}>Cut</button>
           <button onClick={() => startRename(menu().paneId, menu().path)}>Rename <kbd>F2</kbd></button>

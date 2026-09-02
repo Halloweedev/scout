@@ -230,3 +230,83 @@ kbd {
     transition-duration: 0.001ms !important;
   }
 }
+
+
+/* Production navigation and startup states. */
+.sidebar-section-action:disabled {
+  opacity: 0.32;
+  pointer-events: none;
+}
+
+.location-input {
+  width: min(720px, 100%);
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.055);
+  color: #eeeeef;
+  font: 11px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.location-input:focus {
+  border-color: rgba(10, 132, 255, 0.46);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.startup-state {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 9px;
+  padding: 40px;
+  color: #9b9ba1;
+  text-align: center;
+}
+
+.startup-state strong {
+  color: #d7d7da;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.startup-message {
+  max-width: 560px;
+  color: #6f6f75;
+  font-size: 10px;
+  line-height: 1.45;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.startup-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-top-color: rgba(255, 255, 255, 0.58);
+  border-radius: 50%;
+  animation: scout-startup-spin 700ms linear infinite;
+}
+
+.startup-retry {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.055);
+  color: #d8d8db;
+}
+
+.startup-retry:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+@keyframes scout-startup-spin {
+  to { transform: rotate(360deg); }
+}

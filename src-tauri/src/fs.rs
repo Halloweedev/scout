@@ -24,15 +24,6 @@ pub struct FsEntry {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DirectoryListing {
-    path: String,
-    parent_path: Option<String>,
-    display_name: String,
-    entries: Vec<FsEntry>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SpecialDirectories {
     home: String,
     desktop: Option<String>,
@@ -178,10 +169,31 @@ fn validate_transfer_destination(source: &Path, destination_directory: &Path, op
     Ok(())
 }
 
+#[cfg(unix)]
+fn copy_symlink(source: &Path, destination: &Path) -> Result<(), String> {
+    use std::os::unix::fs::symlink;
+    let target = fs::read_link(source).map_err(|error| error.to_string())?;
+    symlink(target, destination).map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn copy_symlink(source: &Path, destination: &Path) -> Result<(), String> {
+    use std::os::windows::fs::{symlink_dir, symlink_file, FileTypeExt};
+    let target = fs::read_link(source).map_err(|error| error.to_string())?;
+    let file_type = fs::symlink_metadata(source).map_err(|error| error.to_string())?.file_type();
+    if file_type.is_symlink_dir() {
+        symlink_dir(target, destination).map_err(|error| error.to_string())
+    } else if file_type.is_symlink_file() {
+        symlink_file(target, destination).map_err(|error| error.to_string())
+    } else {
+        Err(format!("Unsupported Windows reparse point: {}", source.display()))
+    }
+}
+
 fn copy_path(source: &Path, destination: &Path) -> Result<(), String> {
     let metadata = fs::symlink_metadata(source).map_err(|error| error.to_string())?;
     if metadata.file_type().is_symlink() {
-        return Err(format!("Copying symbolic links is not supported yet: {}", source.display()));
+        return copy_symlink(source, destination);
     }
 
     if metadata.is_dir() {
@@ -351,14 +363,23 @@ fn platform_locations(home: &Path) -> (Option<String>, Option<String>, Vec<Strin
 }
 
 #[cfg(target_os = "windows")]
+#[link(name = "kernel32")]
+unsafe extern "system" {
+    #[link_name = "GetLogicalDrives"]
+    fn get_logical_drives() -> u32;
+}
+
+#[cfg(target_os = "windows")]
 fn platform_locations(_home: &Path) -> (Option<String>, Option<String>, Vec<String>, Option<String>, Option<String>) {
+    let mask = unsafe { get_logical_drives() };
     let mut drives = Vec::new();
-    for letter in b'A'..=b'Z' {
-        let root = PathBuf::from(format!("{}:\\", letter as char));
-        push_directory_if_present(&mut drives, root);
+    for index in 0..26u8 {
+        if mask & (1u32 << index) != 0 {
+            drives.push(format!("{}:\\", (b'A' + index) as char));
+        }
     }
-    // The Windows Recycle Bin and network namespace are shell objects, not normal
-    // directories Scout can safely enumerate through std::fs.
+    // Recycle Bin and network namespaces are shell objects rather than directories
+    // Scout can safely enumerate through std::fs.
     (None, None, drives, None, None)
 }
 
@@ -366,21 +387,23 @@ fn platform_locations(_home: &Path) -> (Option<String>, Option<String>, Vec<Stri
 fn platform_locations(home: &Path) -> (Option<String>, Option<String>, Vec<String>, Option<String>, Option<String>) {
     let trash = home.join(".local/share/Trash/files");
     let mut drives = Vec::new();
-    for root in [PathBuf::from("/media"), PathBuf::from("/mnt")] {
-        if let Ok(entries) = fs::read_dir(root) {
-            for entry in entries.flatten() {
-                push_directory_if_present(&mut drives, entry.path());
+
+    if let Ok(entries) = fs::read_dir("/mnt") {
+        for entry in entries.flatten() {
+            push_directory_if_present(&mut drives, entry.path());
+        }
+    }
+
+    if let Some(user) = home.file_name() {
+        for root in [PathBuf::from("/media").join(user), PathBuf::from("/run/media").join(user)] {
+            if let Ok(entries) = fs::read_dir(root) {
+                for entry in entries.flatten() {
+                    push_directory_if_present(&mut drives, entry.path());
+                }
             }
         }
     }
-    if let Ok(user) = std::env::var("USER") {
-        let run_media = PathBuf::from("/run/media").join(user);
-        if let Ok(entries) = fs::read_dir(run_media) {
-            for entry in entries.flatten() {
-                push_directory_if_present(&mut drives, entry.path());
-            }
-        }
-    }
+
     (None, trash.is_dir().then(|| path_string(&trash)), drives, None, None)
 }
 
@@ -402,84 +425,6 @@ pub fn special_directories() -> Result<SpecialDirectories, String> {
         drives,
         network,
         applications,
-    })
-}
-
-#[tauri::command]
-pub fn list_directory(path: String, show_hidden: bool) -> Result<DirectoryListing, String> {
-    use rayon::prelude::*;
-    let directory = PathBuf::from(&path);
-    if !directory.is_dir() {
-        return Err(format!("Not a directory: {path}"));
-    }
-
-    // Nautilus: async enumerator, not blocking UI. We collect DirEntries first (fast), then parallel stat.
-    let dir_entries: Vec<fs::DirEntry> = fs::read_dir(&directory)
-        .map_err(|error| error.to_string())?
-        .filter_map(|e| e.ok())
-        .collect();
-
-    // Fast path: use DirEntry::file_type to avoid extra symlink_metadata where possible
-    let mut entries: Vec<FsEntry> = dir_entries
-        .par_iter()
-        .filter_map(|entry| {
-            let path = entry.path();
-            // Use DirEntry metadata if available, fallback to symlink_metadata
-            let ft = entry.file_type().ok()?;
-            let name = path.file_name()?.to_string_lossy().into_owned();
-            if !show_hidden && name.starts_with('.') {
-                return None;
-            }
-            // Still need full metadata for size/modified, but file_type is already known
-            let metadata = fs::symlink_metadata(&path).ok()?;
-            let hidden = is_hidden(&name, &metadata);
-            if !show_hidden && hidden {
-                return None;
-            }
-            let kind = if ft.is_dir() {
-                "directory"
-            } else if ft.is_file() {
-                "file"
-            } else if ft.is_symlink() {
-                "symlink"
-            } else {
-                "other"
-            };
-            let modified_ms = metadata
-                .modified()
-                .ok()
-                .and_then(|v| v.duration_since(UNIX_EPOCH).ok())
-                .and_then(|d| u64::try_from(d.as_millis()).ok());
-            Some(FsEntry {
-                name: name.clone(),
-                path: path_string(&path),
-                kind: kind.to_string(),
-                size: ft.is_file().then_some(metadata.len()),
-                modified_ms,
-                hidden,
-                extension: path.extension().map(|v| v.to_string_lossy().into_owned()),
-            })
-        })
-        .collect();
-
-    entries.sort_by(|left, right| {
-        let left_directory = left.kind == "directory";
-        let right_directory = right.kind == "directory";
-        right_directory
-            .cmp(&left_directory)
-            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
-    });
-
-    let display_name = directory
-        .file_name()
-        .map(|value| value.to_string_lossy().into_owned())
-        .unwrap_or_else(|| path_string(&directory));
-
-    Ok(DirectoryListing {
-        path: path_string(&directory),
-        parent_path: directory.parent().map(path_string),
-        display_name,
-        entries,
     })
 }
 
@@ -754,18 +699,19 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn failed_recursive_copy_removes_partial_destination() {
+    fn copies_symbolic_links_without_dereferencing() {
         use std::os::unix::fs::symlink;
 
-        let root = test_directory("copy-cleanup");
+        let root = test_directory("symlink-copy");
         let source = root.join("source");
         let destination = root.join("destination");
         fs::create_dir_all(&source).expect("create source");
         fs::write(source.join("ok.txt"), b"ok").expect("write source file");
-        symlink(source.join("ok.txt"), source.join("link.txt")).expect("create symlink");
+        symlink("ok.txt", source.join("link.txt")).expect("create symlink");
 
-        assert!(copy_path(&source, &destination).is_err());
-        assert!(!destination.exists());
+        copy_path(&source, &destination).expect("copy source with symlink");
+        assert_eq!(fs::read_link(destination.join("link.txt")).expect("read copied symlink"), PathBuf::from("ok.txt"));
+        assert_eq!(fs::read(destination.join("link.txt")).expect("follow copied symlink"), b"ok");
 
         fs::remove_dir_all(root).expect("cleanup test directory");
     }

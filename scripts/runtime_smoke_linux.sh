@@ -7,7 +7,7 @@ if [[ "${RUNNER_OS:-Linux}" != "Linux" ]]; then
 fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BINARY="$ROOT_DIR/src-tauri/target/debug/scout"
+BINARY="${SCOUT_BINARY:-$ROOT_DIR/src-tauri/target/debug/scout}"
 TEMP_ROOT="${RUNNER_TEMP:-/tmp}/scout-runtime-smoke"
 FIXTURE_HOME="$TEMP_ROOT/home"
 LOG_PATH="${RUNNER_TEMP:-/tmp}/scout-runtime.log"
@@ -68,6 +68,30 @@ xdotool windowmove "$WINDOW_ID" 20 20 || true
 xdotool windowfocus "$WINDOW_ID" || true
 sleep 1
 
+# Global editable location entry must work even in a keyboard-first flow.
+xdotool key --window "$WINDOW_ID" ctrl+l
+sleep 0.3
+xdotool type --window "$WINDOW_ID" --clearmodifiers '~/A-Folder'
+xdotool key --window "$WINDOW_ID" Return
+sleep 0.8
+xdotool key --window "$WINDOW_ID" ctrl+l
+sleep 0.3
+xdotool type --window "$WINDOW_ID" --clearmodifiers '~'
+xdotool key --window "$WINDOW_ID" Return
+sleep 0.8
+
+# Tabs must create and close without disturbing the current folder.
+xdotool key --window "$WINDOW_ID" ctrl+t
+sleep 0.4
+xdotool key --window "$WINDOW_ID" ctrl+w
+sleep 0.5
+
+if ! kill -0 "$SCOUT_PID" 2>/dev/null; then
+  echo "Scout crashed during location/tab navigation." >&2
+  cat "$LOG_PATH" >&2 || true
+  exit 1
+fi
+
 # Finder-compatible view shortcuts: 1 Icons, 2 List, 3 Columns, 4 Gallery.
 xdotool key --window "$WINDOW_ID" ctrl+3
 sleep 1
@@ -109,6 +133,12 @@ sleep 0.6
 
 if ! kill -0 "$SCOUT_PID" 2>/dev/null; then
   echo "Scout crashed during horizontal Columns navigation." >&2
+  cat "$LOG_PATH" >&2 || true
+  exit 1
+fi
+
+if grep -Eqi 'panicked at|thread .* panicked|fatal error|segmentation fault' "$LOG_PATH"; then
+  echo "Scout runtime log contains a fatal error." >&2
   cat "$LOG_PATH" >&2 || true
   exit 1
 fi
