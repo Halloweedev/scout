@@ -13,11 +13,23 @@ interface DirectoryCacheEntry {
 const dirCache = new Map<string, DirectoryCacheEntry>();
 const fastInFlight = new Map<string, Promise<DirectoryListing>>();
 const fullInFlight = new Map<string, Promise<DirectoryListing>>();
+const generations = new Map<string, number>();
 const CACHE_TTL = 10000;
 const MAX_CACHE_ENTRIES = 80;
 
 function cacheKey(path: string, showHidden: boolean) {
   return `${path}::${showHidden}`;
+}
+
+function generation(key: string) {
+  return generations.get(key) ?? 0;
+}
+
+function invalidateKey(key: string) {
+  generations.set(key, generation(key) + 1);
+  dirCache.delete(key);
+  fastInFlight.delete(key);
+  fullInFlight.delete(key);
 }
 
 function trimCache() {
@@ -42,15 +54,20 @@ export async function listDirectory(path: string, showHidden: boolean) {
   const existing = fastInFlight.get(key);
   if (existing) return existing;
 
-  const request = invoke<DirectoryListing>("list_directory_fast", { path, showHidden })
+  const startedGeneration = generation(key);
+  let request: Promise<DirectoryListing>;
+  request = invoke<DirectoryListing>("list_directory_fast", { path, showHidden })
     .then((listing) => {
+      if (generation(key) !== startedGeneration) return listing;
       const current = dirCache.get(key);
       // Never replace newer, fully-hydrated metadata with the fast skeleton.
       if (!current?.complete) dirCache.set(key, { listing, ts: Date.now(), complete: false });
       trimCache();
       return current?.complete ? current.listing : listing;
     })
-    .finally(() => fastInFlight.delete(key));
+    .finally(() => {
+      if (fastInFlight.get(key) === request) fastInFlight.delete(key);
+    });
 
   fastInFlight.set(key, request);
   return request;
@@ -64,13 +81,19 @@ export async function hydrateDirectory(path: string, showHidden: boolean) {
   const existing = fullInFlight.get(key);
   if (existing) return existing;
 
-  const request = invoke<DirectoryListing>("list_directory_full", { path, showHidden })
+  const startedGeneration = generation(key);
+  let request: Promise<DirectoryListing>;
+  request = invoke<DirectoryListing>("list_directory_full", { path, showHidden })
     .then((listing) => {
-      dirCache.set(key, { listing, ts: Date.now(), complete: true });
-      trimCache();
+      if (generation(key) === startedGeneration) {
+        dirCache.set(key, { listing, ts: Date.now(), complete: true });
+        trimCache();
+      }
       return listing;
     })
-    .finally(() => fullInFlight.delete(key));
+    .finally(() => {
+      if (fullInFlight.get(key) === request) fullInFlight.delete(key);
+    });
 
   fullInFlight.set(key, request);
   return request;
@@ -78,14 +101,26 @@ export async function hydrateDirectory(path: string, showHidden: boolean) {
 
 export function clearDirCache(path?: string) {
   if (path) {
-    for (const key of [...dirCache.keys()]) {
-      if (key.startsWith(`${path}::`)) dirCache.delete(key);
+    const prefix = `${path}::`;
+    const keys = new Set([
+      ...dirCache.keys(),
+      ...fastInFlight.keys(),
+      ...fullInFlight.keys(),
+      ...generations.keys(),
+    ]);
+    for (const key of keys) {
+      if (key.startsWith(prefix)) invalidateKey(key);
     }
-    // Existing requests cannot be cancelled at the OS level, but their result will only
-    // populate cache for their exact key and App-level navigation tokens prevent stale UI.
     return;
   }
-  dirCache.clear();
+
+  const keys = new Set([
+    ...dirCache.keys(),
+    ...fastInFlight.keys(),
+    ...fullInFlight.keys(),
+    ...generations.keys(),
+  ]);
+  for (const key of keys) invalidateKey(key);
 }
 
 export async function watchDirectory(path: string) {
