@@ -2,13 +2,76 @@ import { getActiveListing } from "./fs";
 import { thumbnailEntry } from "./preview";
 
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "bmp", "tif", "tiff", "ico"]);
+const MAX_CACHE_ENTRIES = 320;
+const MAX_CONCURRENT_LOADS = 4;
+
 const cache = new Map<string, string>();
+const inFlight = new Map<string, Promise<string | null>>();
+const loadWaiters: Array<() => void> = [];
+let activeLoads = 0;
 let intersectionObserver: IntersectionObserver | null = null;
 let mutationObserver: MutationObserver | null = null;
 let reconcileQueued = false;
 
 function thumbnailKey(path: string, modifiedMs: number | null) {
   return `${path}:${modifiedMs ?? 0}`;
+}
+
+function cachedThumbnail(key: string) {
+  const value = cache.get(key);
+  if (!value) return undefined;
+  // Refresh insertion order so the bounded Map behaves as a tiny LRU.
+  cache.delete(key);
+  cache.set(key, value);
+  return value;
+}
+
+function cacheThumbnail(key: string, value: string) {
+  cache.delete(key);
+  cache.set(key, value);
+  while (cache.size > MAX_CACHE_ENTRIES) {
+    const oldest = cache.keys().next().value as string | undefined;
+    if (!oldest) break;
+    cache.delete(oldest);
+  }
+}
+
+async function acquireLoadSlot() {
+  if (activeLoads < MAX_CONCURRENT_LOADS) {
+    activeLoads += 1;
+    return;
+  }
+  await new Promise<void>((resolve) => loadWaiters.push(resolve));
+  activeLoads += 1;
+}
+
+function releaseLoadSlot() {
+  activeLoads = Math.max(0, activeLoads - 1);
+  loadWaiters.shift()?.();
+}
+
+function requestThumbnail(path: string, key: string) {
+  const cached = cachedThumbnail(key);
+  if (cached) return Promise.resolve<string | null>(cached);
+
+  const existing = inFlight.get(key);
+  if (existing) return existing;
+
+  const request = (async () => {
+    await acquireLoadSlot();
+    try {
+      const dataUrl = await thumbnailEntry(path);
+      if (dataUrl) cacheThumbnail(key, dataUrl);
+      return dataUrl;
+    } finally {
+      releaseLoadSlot();
+    }
+  })().finally(() => {
+    if (inFlight.get(key) === request) inFlight.delete(key);
+  });
+
+  inFlight.set(key, request);
+  return request;
 }
 
 function rowEntry(row: HTMLElement) {
@@ -40,12 +103,8 @@ async function loadThumbnail(icon: HTMLElement) {
   icon.dataset.thumbnailState = "loading";
 
   try {
-    let dataUrl = cache.get(key);
-    if (!dataUrl) {
-      dataUrl = (await thumbnailEntry(path)) ?? undefined;
-      if (dataUrl) cache.set(key, dataUrl);
-    }
-    if (!dataUrl || icon.dataset.thumbnailKey !== key) return;
+    const dataUrl = await requestThumbnail(path, key);
+    if (!dataUrl || icon.dataset.thumbnailKey !== key || !icon.isConnected) return;
 
     const image = document.createElement("img");
     image.className = "file-thumbnail";
@@ -62,7 +121,8 @@ async function loadThumbnail(icon: HTMLElement) {
 function bindRow(row: HTMLElement) {
   const entry = rowEntry(row);
   const icon = row.querySelector<HTMLElement>(".file-icon");
-  if (!entry || !icon || entry.kind !== "file" || !entry.extension || !IMAGE_EXTENSIONS.has(entry.extension)) return;
+  const extension = entry?.extension?.toLowerCase() ?? null;
+  if (!entry || !icon || entry.kind !== "file" || !extension || !IMAGE_EXTENSIONS.has(extension)) return;
 
   const key = thumbnailKey(entry.path, entry.modifiedMs);
   if (icon.dataset.thumbnailKey === key) return;
@@ -82,7 +142,7 @@ function reconcile() {
 function scheduleReconcile() {
   if (reconcileQueued) return;
   reconcileQueued = true;
-  queueMicrotask(reconcile);
+  requestAnimationFrame(reconcile);
 }
 
 export function installImageThumbnails() {
@@ -113,5 +173,8 @@ export function installImageThumbnails() {
     mutationObserver = null;
     intersectionObserver = null;
     cache.clear();
+    inFlight.clear();
+    loadWaiters.splice(0);
+    activeLoads = 0;
   };
 }
