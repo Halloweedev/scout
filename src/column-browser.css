@@ -1,0 +1,332 @@
+.column-browser {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  background: #0b0b0c;
+  scrollbar-width: thin;
+}
+
+.column-browser-column {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 190px;
+  max-width: 420px;
+  height: 100%;
+  min-height: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.075);
+  background: rgba(255, 255, 255, 0.004);
+}
+
+.column-browser-column.focused {
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.column-browser-header {
+  display: flex;
+  height: 29px;
+  padding: 0 10px;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+  color: #77777d;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.column-browser-header > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.column-browser-spinner {
+  width: 10px;
+  height: 10px;
+  margin-left: auto;
+  flex: 0 0 auto;
+  border: 1.5px solid rgba(255, 255, 255, 0.14);
+  border-top-color: rgba(255, 255, 255, 0.75);
+  border-radius: 50%;
+  animation: scout-column-spin 700ms linear infinite;
+}
+
+@keyframes scout-column-spin {
+  to { transform: rotate(360deg); }
+}
+
+.column-browser-list {
+  height: calc(100% - 29px);
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 5px 8px;
+  scrollbar-width: thin;
+}
+
+.column-browser-row {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 6px;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #d0d0d4;
+  user-select: none;
+}
+
+.column-browser-row:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.column-browser-row.path-selected {
+  background: rgba(255, 255, 255, 0.065);
+}
+
+.column-browser-row.selected {
+  background: rgba(10, 132, 255, 0.82);
+  color: white;
+}
+
+.column-browser-column:not(.focused) .column-browser-row.selected {
+  background: rgba(255, 255, 255, 0.115);
+}
+
+.column-browser-icon {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  place-items: center;
+  color: #929299;
+}
+
+.column-browser-row.selected .column-browser-icon {
+  color: currentColor;
+}
+
+.column-browser-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: inherit;
+  font-size: 11.5px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.column-browser-disclosure {
+  display: inline-grid;
+  width: 14px;
+  height: 18px;
+  flex: 0 0 14px;
+  place-items: center;
+  color: #68686e;
+}
+
+.column-browser-row.selected .column-browser-disclosure {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.column-browser-empty,
+.column-browser-error {
+  padding: 18px 10px;
+  color: #66666c;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.column-browser-error {
+  color: #d28d8d;
+  overflow-wrap: anywhere;
+}
+
+.column-browser-resize {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+}
+
+.column-browser-resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 2px;
+  bottom: 0;
+  width: 1px;
+  background: transparent;
+}
+
+.column-browser-resize:hover::after,
+.column-browser-resize:active::after {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.column-browser-preview {
+  flex: 0 0 auto;
+  min-width: 320px;
+  max-width: 560px;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  border-right: 1px solid rgba(255, 255, 255, 0.055);
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.column-preview-loading {
+  display: flex;
+  min-height: 120px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: #727278;
+  font-size: 11px;
+}
+
+.column-preview-loading .column-browser-spinner {
+  margin-left: 0;
+}
+
+.column-preview-stage {
+  display: grid;
+  min-height: 310px;
+  padding: 22px;
+  place-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.column-preview-image,
+.column-preview-media {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.column-preview-pdf {
+  width: 100%;
+  height: 360px;
+  border: 0;
+  border-radius: 7px;
+  background: white;
+}
+
+.column-preview-audio {
+  display: grid;
+  width: 100%;
+  place-items: center;
+  gap: 28px;
+  color: #85858c;
+}
+
+.column-preview-audio audio {
+  width: min(100%, 340px);
+}
+
+.column-preview-text {
+  width: 100%;
+  max-height: 360px;
+  margin: 0;
+  overflow: auto;
+  color: #c7c7cb;
+  font: 10.5px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.column-preview-generic {
+  color: #77777e;
+}
+
+.column-preview-info {
+  padding: 18px 20px 28px;
+}
+
+.column-preview-name {
+  overflow: hidden;
+  color: #ededf0;
+  font-size: 17px;
+  font-weight: 660;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.column-preview-kind {
+  margin-top: 4px;
+  color: #76767c;
+  font-size: 10.5px;
+}
+
+.column-preview-details {
+  display: flex;
+  margin-top: 12px;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  color: #89898f;
+  font-size: 10.5px;
+}
+
+.column-preview-metadata {
+  display: grid;
+  grid-template-columns: minmax(80px, 0.7fr) minmax(0, 1.3fr);
+  gap: 14px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+  font-size: 10.5px;
+}
+
+.column-preview-metadata:first-of-type {
+  margin-top: 14px;
+}
+
+.column-preview-metadata span {
+  color: #696970;
+}
+
+.column-preview-metadata strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #b2b2b7;
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
+
+.column-browser .file-icon.has-thumbnail {
+  background: transparent;
+}
+
+.pane-grid.view-columns .file-area {
+  overflow: hidden;
+  padding: 0;
+}
+
+.pane-grid.view-columns .empty-state {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .column-browser-preview {
+    min-width: 280px;
+  }
+}
