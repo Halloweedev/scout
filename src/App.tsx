@@ -163,7 +163,7 @@ export default function App() {
   const [viewMenuOpen, setViewMenuOpen] = createSignal(false);
   const [isDragging, setIsDragging] = createSignal(false);
   const [zoom, setZoom] = createSignal(1);
-  const [sortBy, setSortBy] = createSignal<"name" | "modified" | "size">("name");
+  const [sortBy, setSortBy] = createSignal<"name" | "modified" | "size" | "type">("name");
   const [sortDir, setSortDir] = createSignal<"asc" | "desc">("asc");
   let rubberBand: HTMLDivElement | null = null;
   let rbStart: { x: number; y: number } | null = null;
@@ -187,6 +187,11 @@ export default function App() {
     entries.sort((a, b) => {
       if (by === "name") return a.name.toLowerCase().localeCompare(b.name.toLowerCase()) * dir;
       if (by === "size") return ((a.size ?? -1) - (b.size ?? -1)) * dir;
+      if (by === "type") {
+        const aType = `${a.kind}:${a.extension ?? ""}:${a.name}`.toLowerCase();
+        const bType = `${b.kind}:${b.extension ?? ""}:${b.name}`.toLowerCase();
+        return aType.localeCompare(bType) * dir;
+      }
       return ((a.modifiedMs ?? 0) - (b.modifiedMs ?? 0)) * dir;
     });
     // keep dirs first like Nautilus, then sort within
@@ -207,7 +212,7 @@ export default function App() {
       path: (isAbs ? "/" : "") + parts.slice(0, i + 1).join("/"),
     }));
   });
-  const toggleSort = (by: "name" | "modified" | "size") => {
+  const toggleSort = (by: "name" | "modified" | "size" | "type") => {
     if (sortBy() === by) setSortDir(sortDir() === "asc" ? "desc" : "asc");
     else { setSortBy(by); setSortDir("asc"); }
   };
@@ -1015,6 +1020,12 @@ export default function App() {
                   <button onClick={() => { setToolbarMenuOpen(false); toggleLinkedPanes(); }}><Icon name="link" size={14} /> Linked panes <span class="menu-state">{linkedPanes() ? "✓" : ""}</span></button>
                   <button disabled={panes().length >= 4} onClick={() => { setToolbarMenuOpen(false); void addPane(); }}><Icon name="split" size={14} /> Add pane</button>
                   <button onClick={() => { setToolbarMenuOpen(false); void toggleHiddenFiles(); }}><Icon name={showHidden() ? "eye-slash" : "eye"} size={14} /> {showHidden() ? "Hide hidden files" : "Show hidden files"}</button>
+                  <div class="menu-separator" />
+                  <button onClick={() => { setSortBy("name"); setSortDir("asc"); }}><span class="menu-check-slot">{sortBy() === "name" ? "✓" : ""}</span> Sort by Name</button>
+                  <button onClick={() => { setSortBy("modified"); setSortDir("desc"); }}><span class="menu-check-slot">{sortBy() === "modified" ? "✓" : ""}</span> Sort by Modified</button>
+                  <button onClick={() => { setSortBy("size"); setSortDir("asc"); }}><span class="menu-check-slot">{sortBy() === "size" ? "✓" : ""}</span> Sort by Size</button>
+                  <button onClick={() => { setSortBy("type"); setSortDir("asc"); }}><span class="menu-check-slot">{sortBy() === "type" ? "✓" : ""}</span> Sort by Type</button>
+                  <button onClick={() => setSortDir(sortDir() === "asc" ? "desc" : "asc")}><span class="menu-check-slot">{sortDir() === "desc" ? "✓" : ""}</span> Reverse order</button>
                   <div class="menu-separator" />
                   <button onClick={() => { setToolbarMenuOpen(false); void makeFolder(); }}><Icon name="new-folder" size={14} /> New folder</button>
                 </div>
