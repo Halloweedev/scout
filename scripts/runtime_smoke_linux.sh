@@ -72,12 +72,18 @@ sleep 1
 xdotool key --window "$WINDOW_ID" ctrl+3
 sleep 1
 
-# The controlled HOME sorts A-Folder first. In Columns, Down selects/drills it,
-# Down drills B-Folder, then Down selects the text file and opens the preview column.
+# Real Miller-column keyboard flow:
+# Down selects A-Folder and reveals its child column.
+# Right focuses the child column; Down selects B-Folder and reveals its child.
+# Right focuses that column; Down selects 01-preview.txt and opens the preview column.
 xdotool key --window "$WINDOW_ID" Down
-sleep 0.8
+sleep 0.7
+xdotool key --window "$WINDOW_ID" Right
+sleep 0.5
 xdotool key --window "$WINDOW_ID" Down
-sleep 0.8
+sleep 0.7
+xdotool key --window "$WINDOW_ID" Right
+sleep 0.5
 xdotool key --window "$WINDOW_ID" Down
 sleep 1.2
 
@@ -95,7 +101,7 @@ if [[ ! -s "$SCREENSHOT_PATH" ]]; then
   exit 1
 fi
 
-# Exercise left/right Miller-column navigation after preview creation.
+# Walk out and back into the current column after preview creation.
 xdotool key --window "$WINDOW_ID" Left
 sleep 0.4
 xdotool key --window "$WINDOW_ID" Right
