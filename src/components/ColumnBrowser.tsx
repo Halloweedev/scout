@@ -1,6 +1,6 @@
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import type { DirectoryListing, FsEntry, PreviewData } from "../types";
-import { listDirectory } from "../lib/fs";
+import { hydrateDirectory, listDirectory } from "../lib/fs";
 import { previewEntry } from "../lib/preview";
 import Icon, { type IconName } from "./Icon";
 
@@ -127,9 +127,9 @@ export default function ColumnBrowser(props: ColumnBrowserProps) {
 
   const paths = createMemo(() => columnPathChain(props.rootPath, props.path));
 
-  function sortedEntries(listing: DirectoryListing | undefined) {
+  function sortedEntries(listing: DirectoryListing | undefined, columnPath?: string) {
     if (!listing) return [];
-    const query = props.query.trim().toLowerCase();
+    const query = columnPath && comparePath(columnPath) === comparePath(props.path) ? props.query.trim().toLowerCase() : "";
     const entries = query ? listing.entries.filter((entry) => entry.name.toLowerCase().includes(query)) : [...listing.entries];
     const direction = props.sortDir === "asc" ? 1 : -1;
     return entries.sort((a, b) => {
@@ -191,6 +191,12 @@ export default function ColumnBrowser(props: ColumnBrowserProps) {
           if (token !== generation) return;
           setListings((current) => ({ ...current, [path]: listing }));
           setErrors((current) => ({ ...current, [path]: undefined }));
+          void hydrateDirectory(path, hidden)
+            .then((hydrated) => {
+              if (token !== generation) return;
+              setListings((current) => ({ ...current, [path]: hydrated }));
+            })
+            .catch(() => {});
         })
         .catch((error) => {
           if (token !== generation) return;
@@ -303,7 +309,7 @@ export default function ColumnBrowser(props: ColumnBrowserProps) {
 
   function focusedEntries() {
     const path = paths()[focusedColumn()];
-    return sortedEntries(path ? listingFor(path) : undefined);
+    return sortedEntries(path ? listingFor(path) : undefined, path);
   }
 
   function selectedIndex(entries: FsEntry[]) {
@@ -365,7 +371,7 @@ export default function ColumnBrowser(props: ColumnBrowserProps) {
       const previous = columnIndex - 1;
       setFocusedColumn(previous);
       const childPath = paths()[columnIndex];
-      const previousEntries = sortedEntries(listingFor(paths()[previous]));
+      const previousEntries = sortedEntries(listingFor(paths()[previous]), paths()[previous]);
       const childIndex = previousEntries.findIndex((entry) => comparePath(entry.path) === comparePath(childPath));
       if (childIndex >= 0) props.onSelection([previousEntries[childIndex].path], childIndex);
       return;
@@ -408,7 +414,7 @@ export default function ColumnBrowser(props: ColumnBrowserProps) {
   return (
     <div class="column-browser" ref={scroller} onPointerDown={props.onFocus}>
       <For each={paths()}>{(columnPath, columnIndex) => {
-        const entries = () => sortedEntries(listingFor(columnPath));
+        const entries = () => sortedEntries(listingFor(columnPath), columnPath);
         const chainedSelection = () => selectedPathForColumn(columnIndex());
         return (
           <section

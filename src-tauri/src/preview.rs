@@ -316,8 +316,7 @@ fn preview_directory(path: &Path, metadata: &fs::Metadata) -> Result<PreviewData
     Ok(preview)
 }
 
-#[tauri::command]
-pub fn thumbnail_entry(path: String) -> Result<Option<String>, String> {
+fn thumbnail_entry_blocking(path: String) -> Result<Option<String>, String> {
     let path = PathBuf::from(path);
     if !is_image_extension(extension(&path).as_deref()) {
         return Ok(None);
@@ -333,8 +332,7 @@ pub fn thumbnail_entry(path: String) -> Result<Option<String>, String> {
     encode_png(thumbnail).map(Some)
 }
 
-#[tauri::command]
-pub fn preview_entry(path: String) -> Result<PreviewData, String> {
+fn preview_entry_blocking(path: String) -> Result<PreviewData, String> {
     let path = PathBuf::from(path);
     let metadata = fs::symlink_metadata(&path).map_err(|error| error.to_string())?;
 
@@ -364,4 +362,19 @@ pub fn preview_entry(path: String) -> Result<PreviewData, String> {
     }
 
     Ok(base_preview(&path, &metadata, "unsupported"))
+}
+
+
+#[tauri::command]
+pub async fn thumbnail_entry(path: String) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || thumbnail_entry_blocking(path))
+        .await
+        .map_err(|error| format!("Thumbnail worker failed: {error}"))?
+}
+
+#[tauri::command]
+pub async fn preview_entry(path: String) -> Result<PreviewData, String> {
+    tauri::async_runtime::spawn_blocking(move || preview_entry_blocking(path))
+        .await
+        .map_err(|error| format!("Preview worker failed: {error}"))?
 }
