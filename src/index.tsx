@@ -37,6 +37,7 @@ import "./footprints.css";
 import "./pdf-tools.css";
 import "./operation-queue.css";
 import "./automation.css";
+import "./view-polish.css";
 
 const root = document.getElementById("root");
 
