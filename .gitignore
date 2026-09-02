@@ -5,6 +5,7 @@ dist/
 Thumbs.db
 *.log
 src-tauri/target/
+src-tauri/icons/icon.ico
 .idea/
 .vscode/
 .env
