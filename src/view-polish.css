@@ -1,0 +1,448 @@
+:root {
+  --scout-control-bg: rgba(255, 255, 255, 0.055);
+  --scout-control-hover: rgba(255, 255, 255, 0.095);
+  --scout-control-active: rgba(255, 255, 255, 0.13);
+  --scout-control-border: rgba(255, 255, 255, 0.075);
+  --scout-control-radius: 7px;
+  --scout-menu-bg: rgba(30, 30, 32, 0.94);
+  --scout-menu-border: rgba(255, 255, 255, 0.12);
+  --scout-selection: rgba(255, 255, 255, 0.09);
+  --scout-blue: #0a84ff;
+}
+
+/* Shared control language. Primary actions intentionally remain visually stronger. */
+.icon-button,
+.sidebar-section-action,
+.workspace-delete,
+.new-tab-button,
+.pane-close-button,
+.search-clear,
+.breadcrumb {
+  border-radius: var(--scout-control-radius);
+  transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
+}
+
+.icon-button:not(.primary),
+.sidebar-section-action,
+.new-tab-button,
+.pane-close-button {
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.icon-button:hover:not(:disabled):not(.primary),
+.sidebar-section-action:hover,
+.new-tab-button:hover,
+.pane-close-button:hover {
+  border-color: var(--scout-control-border);
+  background: var(--scout-control-hover);
+}
+
+.icon-button:active:not(:disabled):not(.primary),
+.sidebar-section-action:active,
+.new-tab-button:active,
+.pane-close-button:active {
+  background: var(--scout-control-active);
+}
+
+.icon-button:disabled,
+.toolbar-dropdown-menu button:disabled {
+  cursor: default;
+  opacity: 0.38;
+}
+
+.toolbar-view-group,
+.toolbar-more {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.toolbar-view-group {
+  gap: 0;
+  padding: 2px;
+  border: 1px solid var(--scout-control-border);
+  border-radius: 9px;
+  background: var(--scout-control-bg);
+}
+
+.toolbar-view-group .icon-button {
+  width: 28px;
+  height: 26px;
+}
+
+.toolbar-view-group .toolbar-divider {
+  height: 17px;
+  margin: 0 1px;
+}
+
+.search-box {
+  border-color: var(--scout-control-border);
+  border-radius: 9px;
+  background: var(--scout-control-bg);
+}
+
+.search-box:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.search-box:focus-within {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.075);
+  box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.16);
+}
+
+.breadcrumb {
+  min-height: 25px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+}
+
+.breadcrumb:hover {
+  border-color: var(--scout-control-border);
+  background: var(--scout-control-bg);
+  color: #ededf0;
+}
+
+/* Finder-like view picker: same content model as the supplied macOS menu. */
+.view-menu,
+.toolbar-dropdown-menu,
+.context-menu {
+  border: 1px solid var(--scout-menu-border);
+  background: var(--scout-menu-bg);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(28px) saturate(145%);
+  -webkit-backdrop-filter: blur(28px) saturate(145%);
+}
+
+.view-menu {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  width: 184px;
+  padding: 6px;
+  border-radius: 13px;
+}
+
+.view-menu button,
+.toolbar-dropdown-menu button,
+.context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 31px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #e1e1e4;
+  font-size: 12px;
+  text-align: left;
+}
+
+.view-menu button:hover,
+.toolbar-dropdown-menu button:hover:not(:disabled),
+.context-menu button:hover:not(:disabled) {
+  background: var(--scout-control-hover);
+}
+
+.view-menu button.selected,
+.view-menu button.selected:hover {
+  background: var(--scout-blue);
+  color: white;
+}
+
+.view-check {
+  display: inline-grid;
+  width: 15px;
+  flex: 0 0 15px;
+  place-items: center;
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.toolbar-more .toolbar-dropdown-menu {
+  top: calc(100% + 8px);
+  right: 0;
+}
+
+.menu-state {
+  margin-left: auto;
+  color: #b9b9be;
+}
+
+/* Never blank/freeze the explorer during a slower volume/cloud-backed read. */
+.file-area {
+  position: relative;
+}
+
+.directory-loading {
+  position: absolute;
+  z-index: 20;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.directory-loading > span {
+  display: block;
+  width: 34%;
+  height: 100%;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.72);
+  animation: scout-directory-loading 900ms ease-in-out infinite;
+}
+
+@keyframes scout-directory-loading {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(390%); }
+}
+
+/* Icons — fixed-size Finder/Nautilus cells. Reset list's 500px min-width. */
+.file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 104px);
+  grid-auto-rows: 112px;
+  justify-content: start;
+  align-content: start;
+  gap: 12px 10px;
+  min-width: 0;
+  padding: 18px 20px 28px;
+}
+
+.file-grid .pane-file-row.grid {
+  display: flex;
+  width: 104px;
+  min-width: 0;
+  min-height: 112px;
+  height: 112px;
+  margin: 0;
+  padding: 10px 7px 7px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  text-align: center;
+}
+
+.file-grid .pane-file-row.grid:hover {
+  border-color: rgba(255, 255, 255, 0.045);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.file-grid .pane-file-row.grid.selected {
+  border-color: rgba(255, 255, 255, 0.105);
+  background: var(--scout-selection);
+  box-shadow: none;
+}
+
+.file-grid .pane-file-row.grid .name-cell {
+  width: 100%;
+  padding: 0;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.file-grid .pane-file-row.grid .file-icon {
+  width: 58px;
+  height: 52px;
+  flex: 0 0 52px;
+  color: #a0a0a6;
+}
+
+.file-grid .pane-file-row.grid .file-icon.has-thumbnail {
+  width: 64px;
+  height: 54px;
+  flex: 0 0 54px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.file-grid .pane-file-row.grid .file-thumbnail {
+  object-fit: contain;
+}
+
+.file-grid .pane-file-row.grid .file-name {
+  display: -webkit-box;
+  width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  text-align: center;
+}
+
+/* Columns — compact vertical columns with horizontal overflow and no list constraints. */
+.file-columns {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(auto-fill, 32px);
+  grid-auto-columns: minmax(230px, 260px);
+  width: max-content;
+  min-width: 100%;
+  height: 100%;
+  min-height: 0;
+  align-content: start;
+  justify-content: start;
+  overflow: auto;
+  background: #0b0b0c;
+}
+
+.file-columns .pane-file-row.columns {
+  display: flex;
+  width: auto;
+  min-width: 0;
+  height: 32px;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 10px;
+  align-items: center;
+  border-right: 1px solid rgba(255, 255, 255, 0.055);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.028);
+  border-radius: 0;
+}
+
+.file-columns .pane-file-row.columns:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.file-columns .pane-file-row.columns.selected {
+  background: var(--scout-selection);
+}
+
+.file-columns .pane-file-row.columns .name-cell {
+  width: 100%;
+  padding: 0;
+}
+
+/* Gallery — large selected preview row plus a compact filmstrip/grid for siblings. */
+.file-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 96px);
+  grid-auto-rows: 94px;
+  grid-auto-flow: row dense;
+  justify-content: start;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px 18px 28px;
+}
+
+.file-gallery .pane-file-row.gallery {
+  display: flex;
+  width: 96px;
+  min-width: 0;
+  min-height: 94px;
+  height: 94px;
+  margin: 0;
+  padding: 8px 6px 6px;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+}
+
+.file-gallery .pane-file-row.gallery:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.file-gallery .pane-file-row.gallery.selected {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 250px;
+  height: 250px;
+  padding: 18px;
+  justify-content: center;
+  border-color: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.file-gallery .pane-file-row.gallery .name-cell {
+  width: 100%;
+  padding: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.file-gallery .pane-file-row.gallery:not(.selected) .file-icon {
+  width: 56px;
+  height: 52px;
+  flex: 0 0 52px;
+}
+
+.file-gallery .pane-file-row.gallery:not(.selected) .file-icon svg {
+  width: 34px;
+  height: 34px;
+}
+
+.file-gallery .pane-file-row.gallery:not(.selected) .file-icon.has-thumbnail {
+  width: 68px;
+  height: 56px;
+  flex: 0 0 56px;
+}
+
+.file-gallery .pane-file-row.gallery.selected .file-icon {
+  width: 250px;
+  height: 178px;
+  flex: 0 0 178px;
+}
+
+.file-gallery .pane-file-row.gallery.selected .file-icon.has-thumbnail {
+  width: min(360px, 70vw);
+  height: 188px;
+  flex: 0 0 188px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.file-gallery .pane-file-row.gallery.selected .file-thumbnail {
+  object-fit: contain;
+}
+
+.file-gallery .pane-file-row.gallery .file-name {
+  display: -webkit-box;
+  width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+
+.file-gallery .pane-file-row.gallery.selected .file-name {
+  max-width: min(620px, 80vw);
+  margin: 0 auto;
+  font-size: 12px;
+  -webkit-line-clamp: 1;
+}
+
+@media (max-width: 760px) {
+  .file-grid {
+    grid-template-columns: repeat(auto-fill, 94px);
+    gap: 10px 8px;
+    padding-inline: 14px;
+  }
+  .file-grid .pane-file-row.grid { width: 94px; }
+  .search-box { min-width: 130px; }
+}
