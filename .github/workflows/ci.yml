@@ -5,11 +5,42 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: write
+
 concurrency:
   group: scout-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  lockfiles:
+    name: Commit dependency lockfiles
+    if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - run: pnpm install --lockfile-only
+      - run: cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+      - name: Commit generated lockfiles
+        shell: bash
+        run: |
+          git add pnpm-lock.yaml src-tauri/Cargo.lock
+          if git diff --cached --quiet; then
+            echo "Lockfiles already committed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Commit dependency lockfiles"
+          git push
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
@@ -22,13 +53,6 @@ jobs:
         with:
           node-version: 24
       - run: pnpm install --frozen-lockfile=false
-      - name: Capture pnpm lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: pnpm-lock
-          path: pnpm-lock.yaml
-          if-no-files-found: error
-          retention-days: 1
       - run: pnpm build
 
   desktop:
@@ -51,15 +75,6 @@ jobs:
         with:
           node-version: 24
       - run: pnpm install --frozen-lockfile=false
-      - run: cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
-      - name: Capture Cargo lockfile
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: cargo-lock
-          path: src-tauri/Cargo.lock
-          if-no-files-found: error
-          retention-days: 1
       - run: cargo check --manifest-path src-tauri/Cargo.toml
       - run: cargo test --manifest-path src-tauri/Cargo.toml
       - run: pnpm tauri build --debug --no-bundle
