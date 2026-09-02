@@ -1,4 +1,7 @@
-use crate::history::{HistoryAction, HistorySnapshot, HistoryState};
+use crate::{
+    history::{HistoryAction, HistorySnapshot, HistoryState},
+    tags,
+};
 use serde::Serialize;
 use std::{
     fs,
@@ -96,9 +99,32 @@ fn validate_name(name: &str) -> Result<(), String> {
     if name.trim().is_empty() {
         return Err("Name cannot be empty".into());
     }
+    if name == "." || name == ".." {
+        return Err("Name cannot be . or ..".into());
+    }
     if name.contains('/') || name.contains('\\') {
         return Err("Name cannot contain path separators".into());
     }
+
+    #[cfg(target_os = "windows")]
+    {
+        if name.chars().any(|character| matches!(character, '<' | '>' | ':' | '"' | '|' | '?' | '*')) {
+            return Err("Name contains characters Windows does not allow".into());
+        }
+        if name.ends_with(' ') || name.ends_with('.') {
+            return Err("Windows names cannot end with a space or period".into());
+        }
+        let base = name.split('.').next().unwrap_or(name).to_ascii_uppercase();
+        let reserved = matches!(base.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+            || (base.len() == 4
+                && (base.starts_with("COM") || base.starts_with("LPT"))
+                && base.as_bytes()[3].is_ascii_digit()
+                && base.as_bytes()[3] != b'0');
+        if reserved {
+            return Err("Name is reserved by Windows".into());
+        }
+    }
+
     Ok(())
 }
 
@@ -132,6 +158,19 @@ fn available_destination(source: &Path, directory: &Path) -> PathBuf {
     directory.join(format!("Scout copy {}", std::process::id()))
 }
 
+fn validate_transfer_destination(source: &Path, destination_directory: &Path, operation: &str) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(source).map_err(|error| error.to_string())?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Ok(());
+    }
+    let source = fs::canonicalize(source).map_err(|error| error.to_string())?;
+    let destination = fs::canonicalize(destination_directory).map_err(|error| error.to_string())?;
+    if destination == source || destination.starts_with(&source) {
+        return Err(format!("Cannot {operation} a folder into itself"));
+    }
+    Ok(())
+}
+
 fn copy_path(source: &Path, destination: &Path) -> Result<(), String> {
     let metadata = fs::symlink_metadata(source).map_err(|error| error.to_string())?;
     if metadata.file_type().is_symlink() {
@@ -140,12 +179,20 @@ fn copy_path(source: &Path, destination: &Path) -> Result<(), String> {
 
     if metadata.is_dir() {
         fs::create_dir(destination).map_err(|error| error.to_string())?;
-        for child in fs::read_dir(source).map_err(|error| error.to_string())? {
-            let child = child.map_err(|error| error.to_string())?;
-            copy_path(&child.path(), &destination.join(child.file_name()))?;
+        let result = (|| -> Result<(), String> {
+            for child in fs::read_dir(source).map_err(|error| error.to_string())? {
+                let child = child.map_err(|error| error.to_string())?;
+                copy_path(&child.path(), &destination.join(child.file_name()))?;
+            }
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = fs::remove_dir_all(destination);
         }
-    } else {
-        fs::copy(source, destination).map_err(|error| error.to_string())?;
+        result?;
+    } else if let Err(error) = fs::copy(source, destination) {
+        let _ = fs::remove_file(destination);
+        return Err(error.to_string());
     }
     Ok(())
 }
@@ -156,6 +203,31 @@ fn remove_path(path: &Path) -> Result<(), String> {
         fs::remove_dir_all(path).map_err(|error| error.to_string())
     } else {
         fs::remove_file(path).map_err(|error| error.to_string())
+    }
+}
+
+fn cleanup_copies(pairs: &[(String, String)]) {
+    for (_, destination) in pairs.iter().rev() {
+        let path = Path::new(destination);
+        if path.exists() {
+            let _ = remove_path(path);
+        }
+    }
+}
+
+fn rollback_moves(pairs: &[(String, String)]) -> Result<(), String> {
+    let mut failures = Vec::new();
+    for (source, destination) in pairs.iter().rev() {
+        if Path::new(destination).exists() {
+            if let Err(error) = move_exact(Path::new(destination), Path::new(source)) {
+                failures.push(error);
+            }
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("; "))
     }
 }
 
@@ -170,8 +242,12 @@ fn move_exact(source: &Path, destination: &Path) -> Result<(), String> {
         copy_path(source, destination).map_err(|copy_error| {
             format!("Move failed ({rename_error}); cross-device copy also failed ({copy_error})")
         })?;
-        remove_path(source)?;
+        if let Err(remove_error) = remove_path(source) {
+            let _ = remove_path(destination);
+            return Err(format!("Move copied the item but could not remove the source: {remove_error}"));
+        }
     }
+    let _ = tags::move_tag_path(source, destination);
     Ok(())
 }
 
@@ -199,27 +275,25 @@ fn apply_history_action(action: &HistoryAction, reverse: bool) -> Result<(), Str
                     let destination = Path::new(destination);
                     if destination.exists() {
                         remove_path(destination)?;
+                        let _ = tags::delete_tag_path(destination);
                     }
                 }
                 Ok(())
             } else {
-                let mut completed: Vec<PathBuf> = Vec::new();
+                let mut completed: Vec<(String, String)> = Vec::new();
                 for (source, destination) in pairs {
-                    let source = Path::new(source);
-                    let destination = Path::new(destination);
-                    if destination.exists() {
-                        for path in completed.iter().rev() {
-                            let _ = remove_path(path);
-                        }
-                        return Err(format!("Cannot redo copy because destination exists: {}", destination.display()));
+                    let source_path = Path::new(source);
+                    let destination_path = Path::new(destination);
+                    if destination_path.exists() {
+                        cleanup_copies(&completed);
+                        return Err(format!("Cannot redo copy because destination exists: {}", destination_path.display()));
                     }
-                    if let Err(error) = copy_path(source, destination) {
-                        for path in completed.iter().rev() {
-                            let _ = remove_path(path);
-                        }
+                    if let Err(error) = copy_path(source_path, destination_path) {
+                        cleanup_copies(&completed);
                         return Err(error);
                     }
-                    completed.push(destination.to_path_buf());
+                    let _ = tags::copy_tag_path(source_path, destination_path);
+                    completed.push((source.clone(), destination.clone()));
                 }
                 Ok(())
             }
@@ -298,7 +372,7 @@ pub fn rename_entry(path: String, new_name: String, history: State<'_, HistorySt
         return Err("An item with that name already exists".into());
     }
     let old_name = source.file_name().map(|value| value.to_string_lossy().into_owned()).unwrap_or_else(|| path.clone());
-    fs::rename(&source, &destination).map_err(|error| error.to_string())?;
+    move_exact(&source, &destination)?;
     history.record(
         "rename",
         format!("Renamed {old_name} to {new_name}"),
@@ -315,9 +389,20 @@ pub fn duplicate_entries(paths: Vec<String>, history: State<'_, HistoryState>) -
         let source = PathBuf::from(&path);
         let parent = source.parent().ok_or_else(|| "Cannot duplicate this path".to_string())?;
         let destination = available_destination(&source, parent);
-        copy_path(&source, &destination)?;
+        if let Err(error) = copy_path(&source, &destination) {
+            cleanup_copies(&pairs);
+            return Err(error);
+        }
+        let _ = tags::copy_tag_path(&source, &destination);
+        match entry_from_path(&destination) {
+            Ok(entry) => results.push(entry),
+            Err(error) => {
+                let _ = remove_path(&destination);
+                cleanup_copies(&pairs);
+                return Err(error);
+            }
+        }
         pairs.push((path_string(&source), path_string(&destination)));
-        results.push(entry_from_path(&destination)?);
     }
     if !pairs.is_empty() {
         history.record(
@@ -339,10 +424,22 @@ pub fn copy_entries(paths: Vec<String>, destination: String, history: State<'_, 
     let mut pairs = Vec::with_capacity(paths.len());
     for path in paths {
         let source = PathBuf::from(&path);
+        validate_transfer_destination(&source, &destination_directory, "copy")?;
         let target = available_destination(&source, &destination_directory);
-        copy_path(&source, &target)?;
+        if let Err(error) = copy_path(&source, &target) {
+            cleanup_copies(&pairs);
+            return Err(error);
+        }
+        let _ = tags::copy_tag_path(&source, &target);
+        match entry_from_path(&target) {
+            Ok(entry) => results.push(entry),
+            Err(error) => {
+                let _ = remove_path(&target);
+                cleanup_copies(&pairs);
+                return Err(error);
+            }
+        }
         pairs.push((path_string(&source), path_string(&target)));
-        results.push(entry_from_path(&target)?);
     }
     if !pairs.is_empty() {
         history.record(
@@ -369,18 +466,31 @@ pub fn move_entries(paths: Vec<String>, destination: String, history: State<'_, 
             results.push(entry_from_path(&source)?);
             continue;
         }
-        if source == destination_directory || destination_directory.starts_with(&source) {
-            return Err("Cannot move a folder into itself".into());
+        if let Err(error) = validate_transfer_destination(&source, &destination_directory, "move") {
+            if let Err(rollback_error) = rollback_moves(&pairs) {
+                return Err(format!("{error}; rollback also failed: {rollback_error}"));
+            }
+            return Err(error);
         }
         let target = available_destination(&source, &destination_directory);
-        if let Err(rename_error) = fs::rename(&source, &target) {
-            copy_path(&source, &target).map_err(|copy_error| {
-                format!("Move failed ({rename_error}); cross-device copy also failed ({copy_error})")
-            })?;
-            remove_path(&source)?;
+        if let Err(error) = move_exact(&source, &target) {
+            if let Err(rollback_error) = rollback_moves(&pairs) {
+                return Err(format!("{error}; rollback also failed: {rollback_error}"));
+            }
+            return Err(error);
+        }
+        match entry_from_path(&target) {
+            Ok(entry) => results.push(entry),
+            Err(error) => {
+                let current_pair = (path_string(&source), path_string(&target));
+                pairs.push(current_pair);
+                if let Err(rollback_error) = rollback_moves(&pairs) {
+                    return Err(format!("{error}; rollback also failed: {rollback_error}"));
+                }
+                return Err(error);
+            }
         }
         pairs.push((path_string(&source), path_string(&target)));
-        results.push(entry_from_path(&target)?);
     }
     if !pairs.is_empty() {
         history.record(
@@ -395,7 +505,9 @@ pub fn move_entries(paths: Vec<String>, destination: String, history: State<'_, 
 #[tauri::command]
 pub fn trash_entries(paths: Vec<String>) -> Result<(), String> {
     for path in paths {
-        trash::delete(PathBuf::from(path)).map_err(|error| error.to_string())?;
+        let source = PathBuf::from(&path);
+        trash::delete(&source).map_err(|error| error.to_string())?;
+        let _ = tags::delete_tag_path(&source);
     }
     Ok(())
 }
@@ -443,4 +555,86 @@ pub fn redo_last_operation(history: State<'_, HistoryState>) -> Result<HistorySn
     apply_history_action(&operation.action, false)?;
     history.commit_redo(operation.id)?;
     history.snapshot()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn test_directory(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock before epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("scout-{name}-{}-{unique}", std::process::id()));
+        fs::create_dir_all(&path).expect("create test directory");
+        path
+    }
+
+    #[test]
+    fn rejects_invalid_names() {
+        assert!(validate_name("").is_err());
+        assert!(validate_name("   ").is_err());
+        assert!(validate_name(".").is_err());
+        assert!(validate_name("..").is_err());
+        assert!(validate_name("a/b").is_err());
+        assert!(validate_name("a\\b").is_err());
+        assert!(validate_name("normal.txt").is_ok());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn rejects_windows_reserved_names() {
+        assert!(validate_name("CON").is_err());
+        assert!(validate_name("nul.txt").is_err());
+        assert!(validate_name("COM1.log").is_err());
+        assert!(validate_name("report?.txt").is_err());
+        assert!(validate_name("trailing.").is_err());
+    }
+
+    #[test]
+    fn rejects_copying_directory_into_descendant() {
+        let root = test_directory("descendant");
+        let source = root.join("source");
+        let child = source.join("child");
+        fs::create_dir_all(&child).expect("create nested source");
+
+        assert!(validate_transfer_destination(&source, &child, "copy").is_err());
+        assert!(validate_transfer_destination(&source, &root, "copy").is_ok());
+
+        fs::remove_dir_all(root).expect("cleanup test directory");
+    }
+
+    #[test]
+    fn copies_nested_directories() {
+        let root = test_directory("nested-copy");
+        let source = root.join("source");
+        let destination = root.join("destination");
+        fs::create_dir_all(source.join("nested")).expect("create source tree");
+        fs::write(source.join("nested").join("hello.txt"), b"hello").expect("write source file");
+
+        copy_path(&source, &destination).expect("copy source tree");
+        assert_eq!(fs::read(destination.join("nested").join("hello.txt")).expect("read copied file"), b"hello");
+
+        fs::remove_dir_all(root).expect("cleanup test directory");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_recursive_copy_removes_partial_destination() {
+        use std::os::unix::fs::symlink;
+
+        let root = test_directory("copy-cleanup");
+        let source = root.join("source");
+        let destination = root.join("destination");
+        fs::create_dir_all(&source).expect("create source");
+        fs::write(source.join("ok.txt"), b"ok").expect("write source file");
+        symlink(source.join("ok.txt"), source.join("link.txt")).expect("create symlink");
+
+        assert!(copy_path(&source, &destination).is_err());
+        assert!(!destination.exists());
+
+        fs::remove_dir_all(root).expect("cleanup test directory");
+    }
 }
