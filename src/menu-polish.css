@@ -1,0 +1,17 @@
+.menu-check-slot {
+  display: inline-grid;
+  width: 15px;
+  min-width: 15px;
+  height: 18px;
+  flex: 0 0 15px;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.toolbar-more .toolbar-dropdown-menu {
+  min-width: 205px;
+  max-height: min(480px, calc(100vh - 110px));
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
