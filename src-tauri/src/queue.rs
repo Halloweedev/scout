@@ -4,7 +4,7 @@ use std::{
     collections::{HashMap, VecDeque},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, MutexGuard,
     },
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -58,10 +58,14 @@ fn now_ms() -> u128 {
         .unwrap_or(0)
 }
 
+fn recover_lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 impl OperationQueueState {
     fn create_job(&self, kind: String, label: String) -> (u64, Arc<AtomicBool>) {
         let cancel = Arc::new(AtomicBool::new(false));
-        let mut inner = self.inner.lock().expect("operation queue mutex poisoned");
+        let mut inner = recover_lock(&self.inner);
         let id = inner.next_id;
         inner.next_id = inner.next_id.saturating_add(1);
         inner.jobs.push_front(OperationJob {
@@ -82,10 +86,7 @@ impl OperationQueueState {
             inner.jobs.pop_back();
         }
         drop(inner);
-        self.cancellations
-            .lock()
-            .expect("operation queue cancellation mutex poisoned")
-            .insert(id, cancel.clone());
+        recover_lock(&self.cancellations).insert(id, cancel.clone());
         (id, cancel)
     }
 
@@ -93,17 +94,14 @@ impl OperationQueueState {
     where
         F: FnOnce(&mut OperationJob),
     {
-        let mut inner = self.inner.lock().expect("operation queue mutex poisoned");
+        let mut inner = recover_lock(&self.inner);
         if let Some(job) = inner.jobs.iter_mut().find(|job| job.id == id) {
             update(job);
         }
     }
 
     fn finish_cancel_tracking(&self, id: u64) {
-        self.cancellations
-            .lock()
-            .expect("operation queue cancellation mutex poisoned")
-            .remove(&id);
+        recover_lock(&self.cancellations).remove(&id);
     }
 }
 
@@ -219,24 +217,12 @@ where
 
 #[tauri::command]
 pub fn operation_queue(state: State<'_, OperationQueueState>) -> Vec<OperationJob> {
-    state
-        .inner
-        .lock()
-        .expect("operation queue mutex poisoned")
-        .jobs
-        .iter()
-        .cloned()
-        .collect()
+    recover_lock(&state.inner).jobs.iter().cloned().collect()
 }
 
 #[tauri::command]
 pub fn cancel_operation(id: u64, state: State<'_, OperationQueueState>) -> bool {
-    let cancellation = state
-        .cancellations
-        .lock()
-        .expect("operation queue cancellation mutex poisoned")
-        .get(&id)
-        .cloned();
+    let cancellation = recover_lock(&state.cancellations).get(&id).cloned();
     if let Some(cancellation) = cancellation {
         cancellation.store(true, Ordering::Relaxed);
         state.update(id, |job| {
@@ -250,6 +236,6 @@ pub fn cancel_operation(id: u64, state: State<'_, OperationQueueState>) -> bool 
 
 #[tauri::command]
 pub fn clear_finished_operations(state: State<'_, OperationQueueState>) {
-    let mut inner = state.inner.lock().expect("operation queue mutex poisoned");
+    let mut inner = recover_lock(&state.inner);
     inner.jobs.retain(|job| job.status == "queued" || job.status == "running");
 }
