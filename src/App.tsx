@@ -482,12 +482,17 @@ export default function App() {
     const path = source?.path ?? special()?.home;
     if (!path) return;
     try {
-      const listing = await listDirectory(path, showHidden());
+      const requestedHidden = showHidden();
+      const listing = await listDirectory(path, requestedHidden);
       const pane = paneFromListing(listing);
       setPanes((current) => [...current, pane]);
       setActivePaneId(pane.id);
       setActiveListing(listing);
       syncTabToPane(pane);
+      void hydrateDirectory(listing.path, requestedHidden).then((hydrated) => {
+        updatePane(pane.id, (candidate) => candidate.path === hydrated.path ? { ...candidate, listing: hydrated } : candidate);
+        if (activePaneId() === pane.id) setActiveListing(hydrated);
+      }).catch(() => {});
       await watchDirectory(listing.path);
     } catch (reason) {
       if (source) updatePane(source.id, (pane) => ({ ...pane, error: String(reason) }));
@@ -584,6 +589,12 @@ export default function App() {
     setActivePaneId(focused.id);
     setActiveListing(focused.listing);
     syncTabToPane(focused);
+    for (const pane of restored) {
+      void hydrateDirectory(pane.path, workspace.showHidden).then((hydrated) => {
+        updatePane(pane.id, (candidate) => candidate.path === hydrated.path ? { ...candidate, listing: hydrated } : candidate);
+        if (activePaneId() === pane.id) setActiveListing(hydrated);
+      }).catch(() => {});
+    }
     await watchDirectory(focused.path);
   }
 
