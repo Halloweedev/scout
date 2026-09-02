@@ -95,6 +95,37 @@ fn tags_for_path_with(connection: &Connection, path: &str) -> Result<Vec<String>
     Ok(tags)
 }
 
+fn rows_under(connection: &Connection, source: &Path) -> Result<Vec<(String, String, i64)>, String> {
+    let mut statement = connection
+        .prepare("SELECT path, tag, created_ms FROM tags")
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })
+        .map_err(|error| error.to_string())?;
+    let mut matches = Vec::new();
+    for row in rows {
+        let row = row.map_err(|error| error.to_string())?;
+        if Path::new(&row.0).starts_with(source) {
+            matches.push(row);
+        }
+    }
+    Ok(matches)
+}
+
+fn remap_path(source_root: &Path, destination_root: &Path, path: &str) -> PathBuf {
+    let path = Path::new(path);
+    match path.strip_prefix(source_root) {
+        Ok(relative) if !relative.as_os_str().is_empty() => destination_root.join(relative),
+        _ => destination_root.to_path_buf(),
+    }
+}
+
 pub(crate) fn add_tags_to_path(path: &str, tags: &[String]) -> Result<Vec<String>, String> {
     if !Path::new(path).exists() {
         return Err("Cannot tag an item that no longer exists".into());
@@ -114,6 +145,68 @@ pub(crate) fn add_tags_to_path(path: &str, tags: &[String]) -> Result<Vec<String
             .map_err(|error| error.to_string())?;
     }
     tags_for_path_with(&connection, path)
+}
+
+pub(crate) fn move_tag_path(source: &Path, destination: &Path) -> Result<(), String> {
+    let mut connection = connection()?;
+    let rows = rows_under(&connection, source)?;
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let transaction = connection.transaction().map_err(|error| error.to_string())?;
+    for (old_path, tag, created_ms) in rows {
+        let new_path = remap_path(source, destination, &old_path).to_string_lossy().into_owned();
+        transaction
+            .execute(
+                "DELETE FROM tags WHERE path = ?1 AND tag = ?2 COLLATE NOCASE",
+                params![old_path, tag],
+            )
+            .map_err(|error| error.to_string())?;
+        transaction
+            .execute(
+                "INSERT OR IGNORE INTO tags(path, tag, created_ms) VALUES (?1, ?2, ?3)",
+                params![new_path, tag, created_ms],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    transaction.commit().map_err(|error| error.to_string())
+}
+
+pub(crate) fn copy_tag_path(source: &Path, destination: &Path) -> Result<(), String> {
+    let mut connection = connection()?;
+    let rows = rows_under(&connection, source)?;
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let transaction = connection.transaction().map_err(|error| error.to_string())?;
+    for (old_path, tag, created_ms) in rows {
+        let new_path = remap_path(source, destination, &old_path).to_string_lossy().into_owned();
+        transaction
+            .execute(
+                "INSERT OR IGNORE INTO tags(path, tag, created_ms) VALUES (?1, ?2, ?3)",
+                params![new_path, tag, created_ms],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    transaction.commit().map_err(|error| error.to_string())
+}
+
+pub(crate) fn delete_tag_path(source: &Path) -> Result<(), String> {
+    let mut connection = connection()?;
+    let rows = rows_under(&connection, source)?;
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let transaction = connection.transaction().map_err(|error| error.to_string())?;
+    for (path, tag, _) in rows {
+        transaction
+            .execute(
+                "DELETE FROM tags WHERE path = ?1 AND tag = ?2 COLLATE NOCASE",
+                params![path, tag],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    transaction.commit().map_err(|error| error.to_string())
 }
 
 pub(crate) fn has_tag(path: &str, tag: &str) -> Result<bool, String> {
@@ -186,6 +279,15 @@ pub fn remove_tags(paths: Vec<String>, tags: Vec<String>) -> Result<Vec<TaggedPa
 
 pub(crate) fn apply_internal_tag_action(path: &str, tags: &[String], context: &JobContext) -> Result<(), String> {
     add_tags_to_path(path, tags)?;
-    context.progress(Some(1.0), Some(format!("Tagged {}", Path::new(path).file_name().map(|value| value.to_string_lossy()).unwrap_or_default())));
+    context.progress(
+        Some(1.0),
+        Some(format!(
+            "Tagged {}",
+            Path::new(path)
+                .file_name()
+                .map(|value| value.to_string_lossy())
+                .unwrap_or_default()
+        )),
+    );
     Ok(())
 }
