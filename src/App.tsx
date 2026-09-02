@@ -265,7 +265,7 @@ export default function App() {
   }
 
   function comparablePath(path: string) {
-    const normalized = path.replace(/\\/g, "/").replace(/\\/$/, "");
+    const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
     return /^[a-zA-Z]:/.test(normalized) ? normalized.toLowerCase() : normalized || "/";
   }
 
@@ -280,7 +280,7 @@ export default function App() {
     const sourceNormalized = comparablePath(source);
     const valueNormalized = comparablePath(value);
     if (sourceNormalized === valueNormalized) return destination;
-    const suffix = value.replace(/\\/g, "/").slice(source.replace(/\\/g, "/").replace(/\\/$/, "").length);
+    const suffix = value.replace(/\\/g, "/").slice(source.replace(/\\/g, "/").replace(/\/+$/, "").length);
     const separator = destination.includes("\\") ? "\\" : "/";
     return `${destination.replace(/[\\/]$/, "")}${suffix.replace(/\//g, separator)}`;
   }
