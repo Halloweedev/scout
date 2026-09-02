@@ -40,6 +40,7 @@ import "./automation.css";
 import "./view-polish.css";
 import "./column-browser.css";
 import "./menu-polish.css";
+import "./quality-polish.css";
 
 const root = document.getElementById("root");
 
