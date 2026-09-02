@@ -887,7 +887,11 @@ export default function App() {
     const key = event.key.toLowerCase();
     const selected = activeSelected();
 
-    if (modifier && key === "a") {
+    if (modifier && !event.shiftKey && ["1", "2", "3", "4"].includes(event.key)) {
+      event.preventDefault();
+      const views: Record<string, ViewMode> = { "1": "icons", "2": "list", "3": "columns", "4": "gallery" };
+      setView(views[event.key]);
+    } else if (modifier && key === "a") {
       event.preventDefault();
       const pane = activePane();
       const entries = pane && pane.id === activePaneId() ? sortedEntries() : pane?.listing?.entries ?? [];

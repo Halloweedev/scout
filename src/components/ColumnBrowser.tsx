@@ -346,8 +346,11 @@ export default function ColumnBrowser(props: ColumnBrowserProps) {
       event.stopPropagation();
       const selected = index >= 0 ? entries[index] : null;
       if (selected?.kind === "directory") {
-        void props.onNavigateDirectory(selected);
-        setFocusedColumn(Math.min(columnIndex + 1, paths().length));
+        const existingChild = paths()[columnIndex + 1];
+        if (!existingChild || comparePath(existingChild) !== comparePath(selected.path)) {
+          void props.onNavigateDirectory(selected);
+        }
+        setFocusedColumn(columnIndex + 1);
         scrollToEnd();
       } else if (columnIndex < paths().length - 1) {
         setFocusedColumn(columnIndex + 1);
@@ -419,7 +422,17 @@ export default function ColumnBrowser(props: ColumnBrowserProps) {
               <span>{listingFor(columnPath)?.displayName ?? columnPath.split(/[\\/]/).filter(Boolean).pop() ?? columnPath}</span>
               <Show when={loadingPaths().has(columnPath)}><span class="column-browser-spinner" /></Show>
             </div>
-            <div class="column-browser-list">
+            <div
+              class="column-browser-list"
+              onClick={(event) => {
+                if (event.target === event.currentTarget) {
+                  props.onFocus();
+                  setFocusedColumn(columnIndex());
+                  props.onSelection([], null);
+                  setPreviewPath(null);
+                }
+              }}
+            >
               <For each={entries()}>{(entry, index) => {
                 const pathSelected = () => !!chainedSelection() && comparePath(chainedSelection()!) === comparePath(entry.path);
                 const selected = () => props.selected.some((path) => comparePath(path) === comparePath(entry.path));
