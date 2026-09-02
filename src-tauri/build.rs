@@ -1,3 +1,4 @@
+#[cfg(target_os = "windows")]
 use std::{fs, path::Path};
 
 #[cfg(target_os = "windows")]

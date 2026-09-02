@@ -2,6 +2,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::{
     collections::{HashMap, VecDeque},
+    panic::{catch_unwind, AssertUnwindSafe},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex, MutexGuard,
@@ -60,6 +61,16 @@ fn now_ms() -> u128 {
 
 fn recover_lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "unknown panic".to_string()
+    }
 }
 
 impl OperationQueueState {
@@ -170,7 +181,7 @@ where
             app: app_for_task.clone(),
             cancel: cancel.clone(),
         };
-        let result = worker(context);
+        let result = catch_unwind(AssertUnwindSafe(|| worker(context)));
         let cancelled = cancel.load(Ordering::Relaxed);
 
         {
@@ -184,7 +195,7 @@ where
                     return;
                 }
                 match result {
-                    Ok(value) => match serde_json::to_value(value) {
+                    Ok(Ok(value)) => match serde_json::to_value(value) {
                         Ok(value) => {
                             job.status = "completed".to_string();
                             job.progress = Some(1.0);
@@ -196,10 +207,16 @@ where
                             job.error = Some(error.to_string());
                         }
                     },
-                    Err(error) => {
+                    Ok(Err(error)) => {
                         job.status = "failed".to_string();
                         job.progress = None;
                         job.error = Some(error);
+                    }
+                    Err(payload) => {
+                        job.status = "failed".to_string();
+                        job.progress = None;
+                        job.detail = Some("The operation stopped unexpectedly".to_string());
+                        job.error = Some(format!("Operation panicked: {}", panic_message(payload.as_ref())));
                     }
                 }
             });
@@ -238,4 +255,15 @@ pub fn cancel_operation(id: u64, state: State<'_, OperationQueueState>) -> bool 
 pub fn clear_finished_operations(state: State<'_, OperationQueueState>) {
     let mut inner = recover_lock(&state.inner);
     inner.jobs.retain(|job| job.status == "queued" || job.status == "running");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::panic_message;
+
+    #[test]
+    fn formats_string_panic_payloads() {
+        let message = "boom".to_string();
+        assert_eq!(panic_message(&message), "boom");
+    }
 }
