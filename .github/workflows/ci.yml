@@ -41,4 +41,5 @@ jobs:
           node-version: 24
       - run: pnpm install --frozen-lockfile=false
       - run: cargo check --manifest-path src-tauri/Cargo.toml
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
       - run: pnpm tauri build --debug --no-bundle
