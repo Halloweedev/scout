@@ -39,6 +39,13 @@ pub struct SpecialDirectories {
     documents: Option<String>,
     downloads: Option<String>,
     pictures: Option<String>,
+    music: Option<String>,
+    movies: Option<String>,
+    trash: Option<String>,
+    icloud: Option<String>,
+    drives: Vec<String>,
+    network: Option<String>,
+    applications: Option<String>,
 }
 
 fn path_string(path: &Path) -> String {
@@ -317,30 +324,100 @@ fn apply_history_action(action: &HistoryAction, reverse: bool) -> Result<(), Str
 #[tauri::command]
 pub fn special_directories() -> Result<SpecialDirectories, String> {
     let home = dirs::home_dir().ok_or_else(|| "Could not resolve the home directory".to_string())?;
+    let icloud = home.join("Library/Mobile Documents/com~apple~CloudDocs");
+    let icloud_path = icloud.is_dir().then(|| path_string(&icloud));
+    let trash = home.join(".Trash");
+    let trash_path = trash.is_dir().then(|| path_string(&trash));
+    let drives = std::fs::read_dir("/Volumes")
+        .ok()
+        .map(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .filter_map(|e| {
+                    let p = e.path();
+                    // filter out hidden and non-directory, keep actual volumes
+                    if p.is_dir() {
+                        Some(path_string(&p))
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     Ok(SpecialDirectories {
         home: path_string(&home),
         desktop: dirs::desktop_dir().map(|path| path_string(&path)),
         documents: dirs::document_dir().map(|path| path_string(&path)),
         downloads: dirs::download_dir().map(|path| path_string(&path)),
         pictures: dirs::picture_dir().map(|path| path_string(&path)),
+        music: dirs::audio_dir().map(|path| path_string(&path)),
+        movies: dirs::video_dir().map(|path| path_string(&path)),
+        trash: trash_path,
+        icloud: icloud_path,
+        drives,
+        network: Some("/Network".to_string()),
+        applications: Some("/Applications".to_string()),
     })
 }
 
 #[tauri::command]
 pub fn list_directory(path: String, show_hidden: bool) -> Result<DirectoryListing, String> {
+    use rayon::prelude::*;
     let directory = PathBuf::from(&path);
     if !directory.is_dir() {
         return Err(format!("Not a directory: {path}"));
     }
 
-    let mut entries = Vec::new();
-    for child in fs::read_dir(&directory).map_err(|error| error.to_string())? {
-        let child = child.map_err(|error| error.to_string())?;
-        let entry = entry_from_path(&child.path())?;
-        if show_hidden || !entry.hidden {
-            entries.push(entry);
-        }
-    }
+    // Nautilus: async enumerator, not blocking UI. We collect DirEntries first (fast), then parallel stat.
+    let dir_entries: Vec<fs::DirEntry> = fs::read_dir(&directory)
+        .map_err(|error| error.to_string())?
+        .filter_map(|e| e.ok())
+        .collect();
+
+    // Fast path: use DirEntry::file_type to avoid extra symlink_metadata where possible
+    let mut entries: Vec<FsEntry> = dir_entries
+        .par_iter()
+        .filter_map(|entry| {
+            let path = entry.path();
+            // Use DirEntry metadata if available, fallback to symlink_metadata
+            let ft = entry.file_type().ok()?;
+            let name = path.file_name()?.to_string_lossy().into_owned();
+            if !show_hidden && name.starts_with('.') {
+                return None;
+            }
+            // Still need full metadata for size/modified, but file_type is already known
+            let metadata = fs::symlink_metadata(&path).ok()?;
+            let hidden = is_hidden(&name, &metadata);
+            if !show_hidden && hidden {
+                return None;
+            }
+            let kind = if ft.is_dir() {
+                "directory"
+            } else if ft.is_file() {
+                "file"
+            } else if ft.is_symlink() {
+                "symlink"
+            } else {
+                "other"
+            };
+            let modified_ms = metadata
+                .modified()
+                .ok()
+                .and_then(|v| v.duration_since(UNIX_EPOCH).ok())
+                .and_then(|d| u64::try_from(d.as_millis()).ok());
+            Some(FsEntry {
+                name: name.clone(),
+                path: path_string(&path),
+                kind: kind.to_string(),
+                size: ft.is_file().then_some(metadata.len()),
+                modified_ms,
+                hidden,
+                extension: path.extension().map(|v| v.to_string_lossy().into_owned()),
+            })
+        })
+        .collect();
 
     entries.sort_by(|left, right| {
         let left_directory = left.kind == "directory";

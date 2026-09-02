@@ -28,6 +28,10 @@
 .portal-sidebar-button.has-items .portal-sidebar-count { color: #9a9aa0; }
 .portal-sidebar-button.active { background: #1d1d1f; color: #f2f2f3; }
 
+.portal-panel.internal-drop-target {
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.35), 0 24px 80px rgba(0, 0, 0, 0.55);
+}
 .portal-panel {
   position: fixed;
   z-index: 69;

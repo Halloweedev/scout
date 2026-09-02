@@ -23,6 +23,13 @@ export interface SpecialDirectories {
   documents: string | null;
   downloads: string | null;
   pictures: string | null;
+  music: string | null;
+  movies: string | null;
+  trash: string | null;
+  icloud: string | null;
+  drives: string[];
+  network: string | null;
+  applications: string | null;
 }
 
 export interface ExplorerTab {

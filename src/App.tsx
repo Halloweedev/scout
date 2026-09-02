@@ -122,6 +122,17 @@ function paneFromListing(listing: DirectoryListing): PaneState {
   };
 }
 
+function iconForEntry(entry: FsEntry): IconName {
+  if (entry.kind === "directory") return "folder";
+  const ext = (entry.extension ?? "").toLowerCase();
+  if (["png","jpg","jpeg","webp","gif","svg","heic","avif"].includes(ext)) return "image";
+  if (["mp4","mov","avi","mkv","webm"].includes(ext)) return "video";
+  if (["mp3","wav","ogg","flac","aac"].includes(ext)) return "music";
+  if (["pdf"].includes(ext)) return "document";
+  if (["zip","rar","7z","tar","gz"].includes(ext)) return "hard-drive";
+  return "file";
+}
+
 export default function App() {
   const [special, setSpecial] = createSignal<SpecialDirectories | null>(null);
   const [tabs, setTabs] = createSignal<ExplorerTab[]>([]);
@@ -136,12 +147,61 @@ export default function App() {
   const [renamePaneId, setRenamePaneId] = createSignal<string | null>(null);
   const [renameValue, setRenameValue] = createSignal("");
   const [contextMenu, setContextMenu] = createSignal<ContextMenuState | null>(null);
+  const [viewMode, setViewMode] = createSignal<"list" | "grid">((() => {
+    const v = localStorage.getItem("scout.view.v1");
+    return v === "grid" ? "grid" : "list";
+  })());
+  const [searchQuery, setSearchQuery] = createSignal("");
+  const [toolbarMenuOpen, setToolbarMenuOpen] = createSignal(false);
+  const [isDragging, setIsDragging] = createSignal(false);
+  const [zoom, setZoom] = createSignal(1);
+  const [sortBy, setSortBy] = createSignal<"name" | "modified" | "size">("name");
+  const [sortDir, setSortDir] = createSignal<"asc" | "desc">("asc");
+  let rubberBand: HTMLDivElement | null = null;
+  let rbStart: { x: number; y: number } | null = null;
   let stopFilesystemListener: (() => void) | undefined;
   let refreshTimer: number | undefined;
 
   const activeTab = createMemo(() => tabs().find((tab) => tab.id === activeTabId()) ?? null);
   const activePane = createMemo(() => panes().find((pane) => pane.id === activePaneId()) ?? null);
   const activeEntries = createMemo(() => activePane()?.listing?.entries ?? []);
+  const filteredEntries = createMemo(() => {
+    const q = searchQuery().toLowerCase().trim();
+    const entries = activeEntries();
+    if (!q) return entries;
+    return entries.filter((e) => e.name.toLowerCase().includes(q));
+  });
+  const sortedEntries = createMemo(() => {
+    const entries = [...filteredEntries()];
+    const by = sortBy();
+    const dir = sortDir() === "asc" ? 1 : -1;
+    entries.sort((a, b) => {
+      if (by === "name") return a.name.toLowerCase().localeCompare(b.name.toLowerCase()) * dir;
+      if (by === "size") return ((a.size ?? -1) - (b.size ?? -1)) * dir;
+      return ((a.modifiedMs ?? 0) - (b.modifiedMs ?? 0)) * dir;
+    });
+    // keep dirs first like Nautilus, then sort within
+    return entries.sort((a, b) => {
+      const ad = a.kind === "directory" ? 0 : 1;
+      const bd = b.kind === "directory" ? 0 : 1;
+      if (ad !== bd) return ad - bd;
+      return 0;
+    });
+  });
+  const breadcrumbs = createMemo(() => {
+    const p = activePane()?.path ?? "";
+    if (!p) return [] as Array<{ name: string; path: string }>;
+    const isAbs = p.startsWith("/");
+    const parts = p.split("/").filter(Boolean);
+    return parts.map((_, i) => ({
+      name: parts[i] || "/",
+      path: (isAbs ? "/" : "") + parts.slice(0, i + 1).join("/"),
+    }));
+  });
+  const toggleSort = (by: "name" | "modified" | "size") => {
+    if (sortBy() === by) setSortDir(sortDir() === "asc" ? "desc" : "asc");
+    else { setSortBy(by); setSortDir("asc"); }
+  };
   const activeSelected = createMemo(() => activePane()?.selected ?? []);
   const canGoBack = createMemo(() => (activePane()?.historyIndex ?? 0) > 0);
   const canGoForward = createMemo(() => {
@@ -156,6 +216,25 @@ export default function App() {
     if (dirs.desktop) items.push({ label: "Desktop", path: dirs.desktop, icon: "desktop" });
     if (dirs.documents) items.push({ label: "Documents", path: dirs.documents, icon: "document" });
     if (dirs.downloads) items.push({ label: "Downloads", path: dirs.downloads, icon: "download" });
+    if (dirs.pictures) items.push({ label: "Pictures", path: dirs.pictures, icon: "image" });
+    if (dirs.music) items.push({ label: "Music", path: dirs.music, icon: "music" });
+    if (dirs.movies) items.push({ label: "Movies", path: dirs.movies, icon: "video" });
+    return items;
+  });
+
+  const macLocations = createMemo<SidebarItem[]>(() => {
+    const dirs = special();
+    if (!dirs) return [];
+    const items: SidebarItem[] = [];
+    if (dirs.icloud) items.push({ label: "iCloud Drive", path: dirs.icloud, icon: "cloud" });
+    items.push({ label: "Macintosh HD", path: "/", icon: "hard-drive" });
+    for (const d of dirs.drives ?? []) {
+      const name = d.split("/").pop() || d;
+      if (name !== "Macintosh HD" && d !== "/") items.push({ label: name, path: d, icon: "hard-drives" });
+    }
+    if (dirs.applications) items.push({ label: "Applications", path: dirs.applications, icon: "hard-drive" });
+    if (dirs.network) items.push({ label: "Network", path: dirs.network, icon: "globe" });
+    if (dirs.trash) items.push({ label: "Trash", path: dirs.trash, icon: "trash" });
     return items;
   });
 
@@ -196,6 +275,7 @@ export default function App() {
     const current = paneById(id);
     if (!current) return null;
 
+    // Nautilus: show skeleton instantly, don't block UI
     updatePane(id, (pane) => ({ ...pane, loading: true, error: options.silent ? pane.error : null }));
     try {
       const listing = await listDirectory(path, showHidden());
@@ -392,6 +472,12 @@ export default function App() {
     localStorage.setItem(LINKED_PANES_KEY, next ? "1" : "0");
   }
 
+  function cycleViewMode() {
+    const next = viewMode() === "list" ? "grid" : "list";
+    setViewMode(next);
+    localStorage.setItem("scout.view.v1", next);
+  }
+
   function saveWorkspace() {
     const snapshot = panes();
     if (!snapshot.length) return;
@@ -438,21 +524,31 @@ export default function App() {
   }
 
   function selectEntry(event: MouseEvent, paneId: string, entry: FsEntry, index: number) {
+    if (isDragging()) return;
+    // Preserve scroll - clicking was resetting to top
+    const fileArea = document.querySelector<HTMLElement>(`.explorer-pane[data-pane-path="${paneById(paneId)?.path}"] .file-area`);
+    const scrollTop = fileArea?.scrollTop ?? null;
     focusPane(paneId);
     const pane = paneById(paneId);
     if (!pane) return;
     const modifier = event.metaKey || event.ctrlKey;
+    const shift = event.shiftKey;
     const anchor = pane.selectionAnchor;
-    const entries = pane.listing?.entries ?? [];
+    const entries = sortedEntries().length ? sortedEntries() : pane.listing?.entries ?? [];
 
-    if (event.shiftKey && anchor !== null) {
+    if (shift && modifier && anchor !== null) {
+      // Nautilus: Ctrl+Shift+click = add range to existing
+      const from = Math.min(anchor, index);
+      const to = Math.max(anchor, index);
+      const range = entries.slice(from, to + 1).map((e) => e.path);
+      const set = new Set(pane.selected);
+      for (const p of range) set.add(p);
+      updatePane(paneId, (c) => ({ ...c, selected: [...set], selectionAnchor: index }));
+    } else if (shift && anchor !== null) {
       const from = Math.min(anchor, index);
       const to = Math.max(anchor, index);
       updatePane(paneId, (current) => ({ ...current, selected: entries.slice(from, to + 1).map((item) => item.path) }));
-      return;
-    }
-
-    if (modifier) {
+    } else if (modifier) {
       updatePane(paneId, (current) => ({
         ...current,
         selected: current.selected.includes(entry.path)
@@ -460,10 +556,61 @@ export default function App() {
           : [...current.selected, entry.path],
         selectionAnchor: index,
       }));
-      return;
+    } else {
+      updatePane(paneId, (current) => ({ ...current, selected: [entry.path], selectionAnchor: index }));
     }
+    if (scrollTop !== null && fileArea) {
+      requestAnimationFrame(() => {
+        if (fileArea) fileArea.scrollTop = scrollTop;
+      });
+    }
+  }
 
-    updatePane(paneId, (current) => ({ ...current, selected: [entry.path], selectionAnchor: index }));
+  function handleRubberBandDown(paneId: string, e: PointerEvent) {
+    const target = e.target as HTMLElement;
+    if (target.closest(".pane-file-row, .file-header, button, input")) return;
+    const area = e.currentTarget as HTMLElement;
+    const rect = area.getBoundingClientRect();
+    rbStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    if (!rubberBand) {
+      rubberBand = document.createElement("div");
+      rubberBand.className = "rubber-band";
+      area.appendChild(rubberBand);
+    }
+    const onMove = (ev: PointerEvent) => {
+      if (!rbStart || !rubberBand) return;
+      const cur = { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+      const x = Math.min(rbStart.x, cur.x);
+      const y = Math.min(rbStart.y, cur.y);
+      const w = Math.abs(cur.x - rbStart.x);
+      const h = Math.abs(cur.y - rbStart.y);
+      rubberBand.style.left = `${x}px`;
+      rubberBand.style.top = `${y}px`;
+      rubberBand.style.width = `${w}px`;
+      rubberBand.style.height = `${h}px`;
+      // select rows intersecting
+      const rows = [...area.querySelectorAll<HTMLElement>(".pane-file-row")];
+      const selected: string[] = [];
+      for (const row of rows) {
+        const r = row.getBoundingClientRect();
+        const rel = { x: r.left - rect.left, y: r.top - rect.top, w: r.width, h: r.height };
+        const intersect = !(rel.x + rel.w < x || rel.x > x + w || rel.y + rel.h < y || rel.y > y + h);
+        if (intersect) {
+          const p = row.dataset.entryPath;
+          if (p) selected.push(p);
+        }
+      }
+      updatePane(paneId, (c) => ({ ...c, selected }));
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      rubberBand?.remove();
+      rubberBand = null;
+      rbStart = null;
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   }
 
   async function activateEntry(paneId: string, entry: FsEntry) {
@@ -577,7 +724,12 @@ export default function App() {
     const key = event.key.toLowerCase();
     const selected = activeSelected();
 
-    if (modifier && key === "c" && selected.length) {
+    if (modifier && key === "a") {
+      event.preventDefault();
+      const pane = activePane();
+      const entries = pane?.listing?.entries ?? [];
+      if (pane) updatePane(pane.id, (c) => ({ ...c, selected: entries.map((e) => e.path), selectionAnchor: 0 }));
+    } else if (modifier && key === "c" && selected.length) {
       event.preventDefault();
       setClipboard({ mode: "copy", paths: selected });
     } else if (modifier && key === "x" && selected.length) {
@@ -595,9 +747,24 @@ export default function App() {
     } else if (modifier && key === "w") {
       event.preventDefault();
       await closeTab(activeTabId());
+    } else if (modifier && event.shiftKey && (key === "n" || event.key === "N")) {
+      event.preventDefault();
+      await makeFolder();
+    } else if ((event.key === "h" || event.key === "H") && modifier) {
+      event.preventDefault();
+      await toggleHiddenFiles();
     } else if (modifier && event.shiftKey && event.key === ".") {
       event.preventDefault();
       await toggleHiddenFiles();
+    } else if ((event.key === "=" || event.key === "+") && modifier) {
+      event.preventDefault();
+      setZoom((z) => Math.min(1.4, z + 0.1));
+    } else if (event.key === "-" && modifier) {
+      event.preventDefault();
+      setZoom((z) => Math.max(0.85, z - 0.1));
+    } else if (event.key === "0" && modifier) {
+      event.preventDefault();
+      setZoom(1);
     } else if (event.key === "F2" && selected[0]) {
       event.preventDefault();
       startRename(activePaneId(), selected[0]);
@@ -614,11 +781,15 @@ export default function App() {
       const entry = activeEntries().find((candidate) => candidate.path === selected[0]);
       const pane = activePane();
       if (entry && pane) await activateEntry(pane.id, entry);
+    } else if (event.key === "F5") {
+      event.preventDefault();
+      await reloadActivePane();
     }
   }
 
   function closeContextMenu() {
     setContextMenu(null);
+    setToolbarMenuOpen(false);
   }
 
   function handleScoutNavigate(event: Event) {
@@ -659,77 +830,122 @@ export default function App() {
 
   return (
     <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand-row"><Icon name="scout" size={18} /><span>Scout</span></div>
+      <aside class="sidebar glass-sidebar">
+        {/* Traffic lights drag region — like LazyLips: 40px strip, negative margins so top-left corner stays draggable */}
+        <div data-tauri-drag-region="deep" class="sidebar-drag-region" />
+        <div class="brand-row"><Icon name="scout" size={18} weight="fill" /><span>Scout</span></div>
         <div class="sidebar-section-label">Places</div>
         <nav class="sidebar-nav">
           <For each={sidebarItems()}>{(item) => (
-            <button class="sidebar-item" classList={{ active: activePane()?.path === item.path }} onClick={() => navigate(item.path)}>
+            <button class="sidebar-item" classList={{ active: activePane()?.path === item.path }} onClick={() => navigate(item.path)} onMouseEnter={() => { void listDirectory(item.path, showHidden()).catch(()=>{}); }}>
               <Icon name={item.icon} size={15} /><span>{item.label}</span>
             </button>
           )}</For>
         </nav>
 
-        <div class="sidebar-section-heading">
-          <span class="sidebar-section-label">Workspaces</span>
-          <button class="sidebar-section-action" onClick={saveWorkspace} aria-label="Save workspace" title="Save current workspace"><Icon name="plus" size={12} /></button>
-        </div>
-        <nav class="sidebar-nav workspace-list">
-          <For each={workspaces()}>{(workspace) => (
-            <div class="workspace-row">
-              <button class="sidebar-item workspace-open" onClick={() => void restoreWorkspace(workspace)} title={workspace.panePaths.join("\n")}>
-                <Icon name="split" size={14} />
-                <span>{workspace.name}</span>
-                <span class="workspace-count">{workspace.panePaths.length}</span>
-              </button>
-              <button class="workspace-delete" onClick={() => deleteWorkspace(workspace.id)} aria-label={`Delete ${workspace.name}`}><Icon name="close" size={11} /></button>
-            </div>
+        <div class="sidebar-section-label" style="margin-top:14px">Locations</div>
+        <nav class="sidebar-nav">
+          <For each={macLocations()}>{(item) => (
+            <button class="sidebar-item" classList={{ active: activePane()?.path === item.path }} onClick={() => navigate(item.path)} onMouseEnter={() => { void listDirectory(item.path, showHidden()).catch(()=>{}); }}>
+              <Icon name={item.icon} size={14} /><span>{item.label}</span>
+            </button>
           )}</For>
         </nav>
 
+        <Show when={workspaces().length > 0}>
+          <div class="sidebar-section-heading">
+            <span class="sidebar-section-label">Workspaces</span>
+            <button class="sidebar-section-action" onClick={saveWorkspace} aria-label="Save workspace" title="Save current workspace"><Icon name="plus" size={12} /></button>
+          </div>
+          <nav class="sidebar-nav workspace-list">
+            <For each={workspaces()}>{(workspace) => (
+              <div class="workspace-row">
+                <button class="sidebar-item workspace-open" onClick={() => void restoreWorkspace(workspace)} title={workspace.panePaths.join("\n")}>
+                  <Icon name="split" size={14} />
+                  <span>{workspace.name}</span>
+                  <span class="workspace-count">{workspace.panePaths.length}</span>
+                </button>
+                <button class="workspace-delete" onClick={() => deleteWorkspace(workspace.id)} aria-label={`Delete ${workspace.name}`}><Icon name="close" size={11} /></button>
+              </div>
+            )}</For>
+          </nav>
+        </Show>
+
         <div class="sidebar-spacer" />
-        <div class="sidebar-footer">GPLv3 · local-first</div>
       </aside>
 
       <section class="workspace">
-        <header class="toolbar">
+        <header class="toolbar glass-toolbar">
           <div class="toolbar-group">
             <button class="icon-button" disabled={!canGoBack()} onClick={() => goHistory(-1)} aria-label="Back"><Icon name="arrow-left" /></button>
             <button class="icon-button" disabled={!canGoForward()} onClick={() => goHistory(1)} aria-label="Forward"><Icon name="arrow-right" /></button>
             <button class="icon-button" disabled={!activePane()?.listing?.parentPath} onClick={goUp} aria-label="Up"><Icon name="arrow-up" /></button>
           </div>
-          <div class="path-display" title={activePane()?.path ?? ""}>{activePane()?.path ?? "Loading…"}</div>
+          <div class="path-display breadcrumbs" title={activePane()?.path ?? ""}>
+            <Show when={breadcrumbs().length} fallback={"Loading…"}>
+              <For each={breadcrumbs()}>{(crumb, i) => (
+                <>
+                  <button class="breadcrumb" onClick={() => navigate(crumb.path)}>{crumb.name || "/"}</button>
+                  <Show when={i() < breadcrumbs().length - 1}><span class="breadcrumb-sep">›</span></Show>
+                </>
+              )}</For>
+            </Show>
+          </div>
           <div class="toolbar-group toolbar-actions">
-            <button class="icon-button" disabled={panes().length <= 1} classList={{ active: linkedPanes() }} onClick={toggleLinkedPanes} aria-label="Link pane navigation" title="Link pane navigation"><Icon name="link" /></button>
-            <button class="icon-button" disabled={panes().length >= 4} onClick={addPane} aria-label="Add pane" title="Add pane"><Icon name="split" /></button>
-            <button class="icon-button" disabled={panes().length <= 1} onClick={() => removePane()} aria-label="Close active pane" title="Close active pane"><Icon name="close" /></button>
-            <button class="icon-button" classList={{ active: showHidden() }} onClick={toggleHiddenFiles} aria-label="Show hidden files"><Icon name="eye" /></button>
-            <button class="icon-button" onClick={makeFolder} aria-label="New folder"><Icon name="new-folder" /></button>
+            <div class="search-box">
+              <Icon name="search" size={14} />
+              <input placeholder="Search" value={searchQuery()} onInput={(e) => setSearchQuery(e.currentTarget.value)} />
+              <Show when={searchQuery()}><button class="search-clear" onClick={() => setSearchQuery("")}><Icon name="close" size={12} /></button></Show>
+            </div>
+            <div class="toolbar-view-group">
+              <button class="icon-button" onClick={cycleViewMode} aria-label="Change view" title={`View: ${viewMode()} (click to cycle)`}>
+                <Icon name={viewMode() === "grid" ? "grid" : "rows"} size={16} />
+              </button>
+              <div class="toolbar-divider" />
+              <button class="icon-button toolbar-dropdown" onClick={(e) => { e.stopPropagation(); setToolbarMenuOpen(!toolbarMenuOpen()); }} aria-label="More">
+                <Icon name="chevron-down" size={14} />
+              </button>
+              <Show when={toolbarMenuOpen()}>
+                <div class="toolbar-dropdown-menu glass-surface" onClick={(e) => e.stopPropagation()}>
+                  <button onClick={() => { setViewMode("grid"); localStorage.setItem("scout.view.v1","grid"); setToolbarMenuOpen(false); }}><Icon name="grid" size={14} /> Grid <Show when={viewMode()==="grid"}><span class="check">✓</span></Show></button>
+                  <button onClick={() => { setViewMode("list"); localStorage.setItem("scout.view.v1","list"); setToolbarMenuOpen(false); }}><Icon name="rows" size={14} /> List <Show when={viewMode()==="list"}><span class="check">✓</span></Show></button>
+                  <div class="menu-separator" />
+                  <button onClick={() => toggleLinkedPanes()}><Icon name="link" size={14} /> Linked {linkedPanes() ? "✓" : ""}</button>
+                  <button disabled={panes().length >= 4} onClick={() => { setToolbarMenuOpen(false); void addPane(); }}><Icon name="split" size={14} /> Add Pane</button>
+                  <button onClick={() => { setToolbarMenuOpen(false); void toggleHiddenFiles(); }}><Icon name={showHidden() ? "eye-slash" : "eye"} size={14} /> {showHidden() ? "Hide Hidden" : "Show Hidden"}</button>
+                  <div class="menu-separator" />
+                  <button onClick={() => { setToolbarMenuOpen(false); void makeFolder(); }}><Icon name="new-folder" size={14} /> New Folder</button>
+                  <button onClick={() => setToolbarMenuOpen(false)}><Icon name="gear" size={14} /> Settings</button>
+                </div>
+              </Show>
+            </div>
+            <button class="icon-button primary" onClick={makeFolder} aria-label="New folder"><Icon name="new-folder" /></button>
           </div>
         </header>
 
-        <div class="tab-strip">
-          <For each={tabs()}>{(tab) => (
-            <button class="tab" classList={{ active: tab.id === activeTabId() }} onClick={() => switchTab(tab.id)}>
-              <Icon name="folder" size={13} /><span>{tab.title}</span>
+        <div class="tab-strip piles">
+          <For each={tabs()}>{(tab, idx) => (
+            <button class="tab pile" classList={{ active: tab.id === activeTabId() }} onClick={() => switchTab(tab.id)} style={`z-index:${10 - idx()}; margin-left:${idx() > 0 ? "-8px" : "0"}`}>
+              <Icon name="folder" size={13} weight={tab.id === activeTabId() ? "fill" : "regular"} /><span>{tab.title}</span>
               <Show when={tabs().length > 1}><span class="tab-close" role="button" onClick={(event) => { event.stopPropagation(); void closeTab(tab.id); }}><Icon name="close" size={12} /></span></Show>
             </button>
           )}</For>
           <button class="new-tab-button" onClick={newTab} aria-label="New tab"><Icon name="plus" size={14} /></button>
         </div>
 
-        <div class={`pane-grid panes-${panes().length}`}>
+        <div class={`pane-grid panes-${panes().length} view-${viewMode()}`}>
           <For each={panes()}>{(pane) => (
             <section class="explorer-pane" classList={{ active: pane.id === activePaneId() }} data-pane-path={pane.path} onPointerDown={() => focusPane(pane.id)}>
-              <div class="pane-chrome">
+              <div class="pane-chrome glass-pane-chrome">
                 <span class="pane-path" title={pane.path}>{pane.path}</span>
-                <Show when={panes().length > 1}>
-                  <button class="pane-close-button" onClick={(event) => { event.stopPropagation(); removePane(pane.id); }} aria-label="Close pane"><Icon name="close" size={12} /></button>
-                </Show>
+                <button class="pane-close-button always-visible" onClick={(event) => { event.stopPropagation(); removePane(pane.id); }} aria-label="Close pane"><Icon name="close" size={12} /></button>
               </div>
               <main
                 class="file-area"
-                classList={{ loading: pane.loading }}
+                classList={{ loading: pane.loading, dragging: isDragging() }}
+                onDragStart={() => setIsDragging(true)}
+                onDragEnd={() => setIsDragging(false)}
+                onPointerDown={() => setIsDragging(false)}
                 onClick={(event) => {
                   if (event.target === event.currentTarget) {
                     focusPane(pane.id);
@@ -737,15 +953,22 @@ export default function App() {
                   }
                 }}
               >
-                <div class="file-header"><div>Name</div><div>Modified</div><div class="size-cell">Size</div></div>
-                <div class="file-list">
-                  <For each={pane.listing?.entries ?? []}>{(entry, index) => (
+                <Show when={viewMode() === "list"}>
+                  <div class="file-header">
+                    <div onClick={() => toggleSort("name")} style="cursor:pointer; user-select:none">Name {sortBy()==="name" ? (sortDir()==="asc" ? "∧" : "∨") : ""}</div>
+                    <div onClick={() => toggleSort("modified")} style="cursor:pointer; user-select:none">Modified {sortBy()==="modified" ? (sortDir()==="asc" ? "∧" : "∨") : ""}</div>
+                    <div class="size-cell" onClick={() => toggleSort("size")} style="cursor:pointer; user-select:none">Size {sortBy()==="size" ? (sortDir()==="asc" ? "∧" : "∨") : ""}</div>
+                  </div>
+                </Show>
+                <div class={viewMode() === "grid" ? "file-grid" : "file-list"} style={zoom() !== 1 ? `zoom:${zoom()}` : ""} onPointerDown={(e) => handleRubberBandDown(pane.id, e as any)}>
+                  <For each={(pane.id === activePaneId() ? sortedEntries() : pane.listing?.entries ?? []) as any}>{(entry, index) => (
                     <div
                       class="pane-file-row"
                       classList={{
                         "file-row": pane.id === activePaneId(),
                         selected: pane.selected.includes(entry.path),
                         cut: clipboard()?.mode === "move" && !!clipboard()?.paths.includes(entry.path),
+                        grid: viewMode() === "grid",
                       }}
                       data-entry-index={index()}
                       data-entry-path={entry.path}
@@ -753,8 +976,8 @@ export default function App() {
                       data-entry-kind={entry.kind}
                       data-entry-extension={entry.extension ?? ""}
                       data-entry-modified={entry.modifiedMs ?? ""}
-                      onClick={(event) => { event.stopPropagation(); selectEntry(event, pane.id, entry, index()); }}
-                      onDblClick={() => activateEntry(pane.id, entry)}
+                      onClick={(event) => { event.stopPropagation(); const d = (event as any).detail; if (d === 2) return; selectEntry(event, pane.id, entry, index()); }}
+                      onDblClick={(e) => { e.preventDefault(); (e as any).stopPropagation(); setIsDragging(false); void activateEntry(pane.id, entry); }}
                       onContextMenu={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
@@ -762,9 +985,20 @@ export default function App() {
                         if (!pane.selected.includes(entry.path)) updatePane(pane.id, (current) => ({ ...current, selected: [entry.path], selectionAnchor: index() }));
                         setContextMenu({ x: event.clientX, y: event.clientY, path: entry.path, paneId: pane.id });
                       }}
+                      draggable={true}
+                      onDragStart={(e) => {
+                        const d = (e as DragEvent & { detail?: number }).detail;
+                        if (d === 2) { e.preventDefault(); return; }
+                        setIsDragging(true);
+                        if (e.dataTransfer) {
+                          e.dataTransfer.setData("text/plain", entry.path);
+                          e.dataTransfer.effectAllowed = "copyMove";
+                        }
+                      }}
+                      onDragEnd={() => setTimeout(() => setIsDragging(false), 80)}
                     >
                       <div class="name-cell">
-                        <span class="file-icon"><Icon name={entry.kind === "directory" ? "folder" : "file"} size={17} /></span>
+                        <span class="file-icon"><Icon name={iconForEntry(entry)} size={viewMode()==="grid" ? 32 : 17} weight={entry.kind==="directory" ? "fill" : "regular"} /></span>
                         <Show when={renamePaneId() === pane.id && renamePath() === entry.path} fallback={<span class="file-name">{entry.name}</span>}>
                           <input
                             class="rename-input"
@@ -776,19 +1010,23 @@ export default function App() {
                           />
                         </Show>
                       </div>
-                      <div class="muted-cell">{formatModified(entry.modifiedMs)}</div>
-                      <div class="muted-cell size-cell">{entry.kind === "directory" ? "—" : formatBytes(entry.size)}</div>
+                      <Show when={viewMode()==="list"}>
+                        <div class="muted-cell">{formatModified(entry.modifiedMs)}</div>
+                        <div class="muted-cell size-cell">{entry.kind === "directory" ? "—" : formatBytes(entry.size)}</div>
+                      </Show>
                     </div>
                   )}</For>
                 </div>
                 <Show when={!pane.loading && (pane.listing?.entries.length ?? 0) === 0}><div class="empty-state">This folder is empty.</div></Show>
+                <Show when={!!searchQuery() && !filteredEntries().length}><div class="empty-state">No matches for “{searchQuery()}”.</div></Show>
               </main>
             </section>
           )}</For>
         </div>
 
-        <footer class="statusbar">
-          <span>{activeEntries().length} {activeEntries().length === 1 ? "item" : "items"}</span>
+        <footer class="statusbar glass-statusbar">
+          <span>{filteredEntries().length} of {activeEntries().length} {activeEntries().length === 1 ? "item" : "items"}</span>
+          <Show when={searchQuery()}><span>filtered</span></Show>
           <Show when={activeSelected().length}><span>{activeSelected().length} selected</span></Show>
           <Show when={panes().length > 1}><span>{panes().length} panes{linkedPanes() ? " · linked" : ""}</span></Show>
           <Show when={clipboard()}>{(payload) => <span>{payload().mode === "copy" ? "Copied" : "Cut"} {payload().paths.length}</span>}</Show>
@@ -797,13 +1035,15 @@ export default function App() {
       </section>
 
       <Show when={contextMenu()}>{(menu) => (
-        <div class="context-menu" style={{ left: `${menu().x}px`, top: `${menu().y}px` }} onClick={(event) => event.stopPropagation()}>
+        <div class="context-menu glass-surface" style={{ left: `${menu().x}px`, top: `${menu().y}px` }} onClick={(event) => event.stopPropagation()}>
           <button onClick={() => { focusPane(menu().paneId); setClipboard({ mode: "copy", paths: paneById(menu().paneId)?.selected ?? [] }); setContextMenu(null); }}><Icon name="copy" size={14} />Copy</button>
           <button onClick={() => { focusPane(menu().paneId); setClipboard({ mode: "move", paths: paneById(menu().paneId)?.selected ?? [] }); setContextMenu(null); }}>Cut</button>
           <button onClick={() => startRename(menu().paneId, menu().path)}>Rename <kbd>F2</kbd></button>
           <button onClick={() => { focusPane(menu().paneId); void duplicateSelection(); }}>Duplicate <kbd>⌘D</kbd></button>
           <div class="menu-separator" />
           <button class="danger" onClick={() => { focusPane(menu().paneId); void trashSelection(); }}><Icon name="trash" size={14} />Move to Trash</button>
+          <div class="menu-separator" />
+          <button onClick={() => setContextMenu(null)}><Icon name="gear" size={14} /> Convert…</button>
         </div>
       )}</Show>
     </div>

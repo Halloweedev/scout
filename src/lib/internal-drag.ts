@@ -16,11 +16,13 @@ let ghost: HTMLDivElement | null = null;
 let suppressClick = false;
 
 function rowFromTarget(target: EventTarget | null) {
-  return target instanceof Element ? target.closest<HTMLElement>(".pane-file-row") : null;
+  if (!(target instanceof Element)) return null;
+  return target.closest<HTMLElement>(".pane-file-row, .portal-row");
 }
 
 function rowPath(row: HTMLElement | null) {
-  return row?.dataset.entryPath ?? null;
+  if (!row) return null;
+  return row.dataset.entryPath ?? (row as any).dataset.portalPath ?? null;
 }
 
 function selectedPaths(row: HTMLElement) {
@@ -71,6 +73,15 @@ function updateDestination(x: number, y: number) {
   const targetPath = rowPath(targetRow);
   const targetKind = targetRow?.dataset.entryKind;
 
+  // Check for Portal drop
+  const portalPanel = hit?.closest<HTMLElement>(".portal-panel, .portal-body");
+  if (portalPanel) {
+    destination = "__portal__";
+    dropTarget = portalPanel as HTMLElement;
+    dropTarget.classList.add("internal-drop-target");
+    return;
+  }
+
   if (targetRow && targetPath && targetKind === "directory" && !candidate.paths.includes(targetPath)) {
     destination = targetPath;
     dropTarget = targetRow;
@@ -85,19 +96,30 @@ function updateDestination(x: number, y: number) {
 
 function handlePointerDown(event: PointerEvent) {
   if (event.button !== 0) return;
-  if (event.target instanceof Element && event.target.closest("input, button, .tab-close")) return;
+  if (event.target instanceof Element && event.target.closest("input, button, .tab-close, .rename-input")) {
+    // Allow portal remove button, but not drag
+    if (!(event.target instanceof Element && event.target.closest(".portal-row"))) return;
+  }
 
   const row = rowFromTarget(event.target);
   const path = rowPath(row);
   if (!row || !path) return;
 
-  const selected = selectedPaths(row);
-  const paths = selected.includes(path) ? selected : [path];
+  // Ensure the entire row is draggable - add class to prevent text selection
+  row.style.userSelect = "none";
+  // For portal rows, use single path; for pane rows, use selection
+  let paths: string[];
+  if (row.classList.contains("portal-row")) {
+    paths = [path];
+  } else {
+    const selected = selectedPaths(row);
+    paths = selected.includes(path) ? selected : [path];
+  }
   candidate = {
     startX: event.clientX,
     startY: event.clientY,
     paths,
-    label: row.dataset.entryName ?? path,
+    label: row.dataset.entryName ?? (row as any).dataset.portalPath ?? path,
   };
 }
 
@@ -122,6 +144,8 @@ function handlePointerUp() {
   const target = destination;
   const completedDrag = dragging;
 
+  // Reset userSelect
+  document.querySelectorAll<HTMLElement>(".pane-file-row").forEach((r) => (r.style.userSelect = ""));
   candidate = null;
   endVisualDrag();
 
@@ -132,6 +156,19 @@ function handlePointerUp() {
   }, 80);
 
   if (!target) return;
+  if (target === "__portal__") {
+    try {
+      const key = "scout:portal:v1";
+      const existing = JSON.parse(localStorage.getItem(key) ?? "[]");
+      const set = new Set<string>(Array.isArray(existing) ? existing : []);
+      for (const p of paths) set.add(p);
+      localStorage.setItem(key, JSON.stringify([...set]));
+      window.dispatchEvent(new CustomEvent("scout:portal-updated"));
+      // Force portal to reconcile via temporary DOM change
+      document.body.dispatchEvent(new CustomEvent("scout:reconcile-portal"));
+    } catch {}
+    return;
+  }
   void moveEntries(paths, target).catch((error) => {
     console.error("Scout could not move dragged files", error);
   });

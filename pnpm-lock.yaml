@@ -11,6 +11,9 @@ importers:
       '@tauri-apps/api':
         specifier: 2.11.1
         version: 2.11.1
+      '@transitionsag/phosphor-solid':
+        specifier: 0.1.0-rc4
+        version: 0.1.0-rc4(solid-js@1.9.15)
       solid-js:
         specifier: 1.9.15
         version: 1.9.15
@@ -296,6 +299,11 @@ packages:
     resolution: {integrity: sha512-R8xGtMpwyetawSqm9kYOuMmEqkhUbvcUy8n0aNXIxollKBLESUu5f4Fx+64hgASYm1H+jSWq6jCW6zqTnH6hqQ==}
     engines: {node: '>= 10'}
     hasBin: true
+
+  '@transitionsag/phosphor-solid@0.1.0-rc4':
+    resolution: {integrity: sha512-DngGQ/tE7tooIIqOmEcW8taD7p+N1ApeEhmHkKujzDXaFDfmheeKTXBfOkxTvqjhqxfDQXGdCBlCfniGbqKVSw==}
+    peerDependencies:
+      solid-js: ^1.9.12
 
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
@@ -966,6 +974,10 @@ snapshots:
       '@tauri-apps/cli-win32-arm64-msvc': 2.11.4
       '@tauri-apps/cli-win32-ia32-msvc': 2.11.4
       '@tauri-apps/cli-win32-x64-msvc': 2.11.4
+
+  '@transitionsag/phosphor-solid@0.1.0-rc4(solid-js@1.9.15)':
+    dependencies:
+      solid-js: 1.9.15
 
   '@types/babel__core@7.20.5':
     dependencies:

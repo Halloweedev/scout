@@ -1,4 +1,39 @@
-import type { JSX } from "solid-js";
+import type { ComponentProps } from "solid-js";
+import {
+  ArrowLeftIcon as ArrowLeft,
+  ArrowRightIcon as ArrowRight,
+  ArrowUpIcon as ArrowUp,
+  CaretDownIcon as CaretDown,
+  XIcon as X,
+  CopyIcon as Copy,
+  MonitorIcon as Monitor,
+  FileTextIcon as FileText,
+  DownloadIcon as Download,
+  EyeIcon as Eye,
+  EyeSlashIcon as EyeSlash,
+  FileIcon as File,
+  FolderIcon as Folder,
+  FolderPlusIcon as FolderPlus,
+  HouseIcon as House,
+  LinkIcon as Link,
+  DotsThreeIcon as DotsThree,
+  PlusIcon as Plus,
+  HexagonIcon as Hexagon,
+  ColumnsIcon as Columns,
+  TrashIcon as Trash,
+  MagnifyingGlassIcon as MagnifyingGlass,
+  SquaresFourIcon as SquaresFour,
+  RowsIcon as Rows,
+  GearIcon as Gear,
+  HardDrivesIcon as HardDrives,
+  CloudIcon as Cloud,
+  GlobeIcon as Globe,
+  MusicNotesIcon as MusicNotes,
+  ImagesSquareIcon as ImagesSquare,
+  VideoIcon as Video,
+  HardDriveIcon as HardDrive,
+  NetworkIcon as Network,
+} from "@transitionsag/phosphor-solid";
 
 export type IconName =
   | "arrow-left"
@@ -11,8 +46,10 @@ export type IconName =
   | "document"
   | "download"
   | "eye"
+  | "eye-slash"
   | "file"
   | "folder"
+  | "folder-open"
   | "home"
   | "link"
   | "more"
@@ -20,52 +57,110 @@ export type IconName =
   | "plus"
   | "scout"
   | "split"
-  | "trash";
+  | "trash"
+  | "search"
+  | "grid"
+  | "rows"
+  | "columns"
+  | "gear"
+  | "hard-drive"
+  | "hard-drives"
+  | "cloud"
+  | "globe"
+  | "music"
+  | "image"
+  | "video"
+  | "network"
+  | "cloud-arrow-down";
 
 interface IconProps {
   name: IconName;
   size?: number;
   class?: string;
+  weight?: ComponentProps<typeof House>["weight"];
 }
 
-const iconContent: Record<IconName, JSX.Element> = {
-  "arrow-left": <path d="M15 18l-6-6 6-6" />,
-  "arrow-right": <path d="M9 6l6 6-6 6" />,
-  "arrow-up": <path d="M12 19V5m-5 5 5-5 5 5" />,
-  "chevron-down": <path d="m8 10 4 4 4-4" />,
-  close: <path d="m8 8 8 8m0-8-8 8" />,
-  copy: <><rect x="8" y="8" width="10" height="10" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></>,
-  desktop: <><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8m-4-4v4" /></>,
-  document: <><path d="M7 3h7l4 4v14H7z" /><path d="M14 3v5h5" /></>,
-  download: <path d="M12 3v12m-5-5 5 5 5-5M5 21h14" />,
-  eye: <><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6S2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="2.5" /></>,
-  file: <><path d="M7 3h7l4 4v14H7z" /><path d="M14 3v5h5" /></>,
-  folder: <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" />,
-  home: <><path d="m3 11 9-7 9 7" /><path d="M5 10v10h14V10M9 20v-6h6v6" /></>,
-  link: <><path d="M10.5 13.5 13.5 10.5" /><path d="M8.2 15.8 6.4 17.6a3.4 3.4 0 0 1-4.8-4.8l3.6-3.6A3.4 3.4 0 0 1 10 9" /><path d="m14 15 4.8-4.8a3.4 3.4 0 0 0-4.8-4.8l-1.8 1.8" /></>,
-  more: <><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></>,
-  "new-folder": <><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" /><path d="M12 10v6m-3-3h6" /></>,
-  plus: <path d="M12 5v14M5 12h14" />,
-  scout: <><path d="M12 3.5 20 8v8l-8 4.5L4 16V8z" /><path d="m8.5 10 3.5-2 3.5 2-3.5 2zM8.5 14l3.5 2 3.5-2" /></>,
-  split: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 4v16" /></>,
-  trash: <><path d="M4 7h16M9 7V4h6v3m3 0-1 14H7L6 7" /><path d="M10 11v6m4-6v6" /></>,
-};
-
 export default function Icon(props: IconProps) {
-  return (
-    <svg
-      class={props.class}
-      width={props.size ?? 16}
-      height={props.size ?? 16}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="1.7"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      {iconContent[props.name]}
-    </svg>
-  );
+  const size = () => props.size ?? 16;
+  const weight = () => props.weight ?? "regular";
+  const cls = () => props.class;
+
+  const dim = () => size();
+
+  switch (props.name) {
+    case "arrow-left":
+      return <ArrowLeft width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "arrow-right":
+      return <ArrowRight width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "arrow-up":
+      return <ArrowUp width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "chevron-down":
+      return <CaretDown width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "close":
+      return <X width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "copy":
+      return <Copy width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "desktop":
+      return <Monitor width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "document":
+      return <FileText width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "download":
+      return <Download width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "eye":
+      return <Eye width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "eye-slash":
+      return <EyeSlash width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "file":
+      return <File width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "folder":
+      return <Folder width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "folder-open":
+      return <Folder width={dim()} height={dim()} weight="fill" class={cls()} />;
+    case "home":
+      return <House width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "link":
+      return <Link width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "more":
+      return <DotsThree width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "new-folder":
+      return <FolderPlus width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "plus":
+      return <Plus width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "scout":
+      return <Hexagon width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "split":
+      return <Columns width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "trash":
+      return <Trash width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "search":
+      return <MagnifyingGlass width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "grid":
+      return <SquaresFour width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "rows":
+      return <Rows width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "columns":
+      return <Columns width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "gear":
+      return <Gear width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "hard-drive":
+      return <HardDrive width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "hard-drives":
+      return <HardDrives width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "cloud":
+      return <Cloud width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "cloud-arrow-down":
+      return <Cloud width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "globe":
+      return <Globe width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "music":
+      return <MusicNotes width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "image":
+      return <ImagesSquare width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "video":
+      return <Video width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    case "network":
+      return <Network width={dim()} height={dim()} weight={weight()} class={cls()} />;
+    default:
+      return <Folder width={dim()} height={dim()} weight={weight()} class={cls()} />;
+  }
 }

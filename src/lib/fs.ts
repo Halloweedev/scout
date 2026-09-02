@@ -4,8 +4,27 @@ import type { DirectoryListing, FsEntry, SpecialDirectories } from "../types";
 let activeDirectory: string | null = null;
 let activeListing: DirectoryListing | null = null;
 
+const dirCache = new Map<string, { listing: DirectoryListing; ts: number }>();
+const CACHE_TTL = 10000;
+
 export async function listDirectory(path: string, showHidden: boolean) {
-  return invoke<DirectoryListing>("list_directory", { path, showHidden });
+  const key = `${path}::${showHidden}`;
+  const cached = dirCache.get(key);
+  if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.listing;
+  const listing = await invoke<DirectoryListing>("list_directory", { path, showHidden });
+  dirCache.set(key, { listing, ts: Date.now() });
+  // keep cache small
+  if (dirCache.size > 60) {
+    const first = dirCache.keys().next().value;
+    if (first) dirCache.delete(first);
+  }
+  return listing;
+}
+
+export function clearDirCache(path?: string) {
+  if (path) {
+    for (const k of [...dirCache.keys()]) if (k.startsWith(path + "::")) dirCache.delete(k);
+  } else dirCache.clear();
 }
 
 export async function watchDirectory(path: string) {

@@ -106,6 +106,17 @@ function renderPanel() {
 
   for (const path of paths) {
     const row = element("div", "portal-row");
+    row.draggable = true;
+    (row as HTMLElement & { dataset: DOMStringMap }).dataset.portalPath = path;
+    row.addEventListener("dragstart", (e) => {
+      const dt = (e as DragEvent).dataTransfer;
+      if (dt) {
+        dt.setData("text/plain", path);
+        dt.effectAllowed = "copyMove";
+      }
+      row.classList.add("dragging");
+    });
+    row.addEventListener("dragend", () => row.classList.remove("dragging"));
     const open = element("button", "portal-open");
     open.type = "button";
     const glyph = element("span", "portal-glyph");
@@ -225,11 +236,20 @@ export function installPortal() {
   observer = new MutationObserver(reconcile);
   observer.observe(document.body, { childList: true, subtree: true });
   window.addEventListener("keydown", handleKeyDown, true);
+  const handlePortalUpdate = () => {
+    loadPaths();
+    updateBadge();
+    if (panel) renderPanel();
+  };
+  window.addEventListener("scout:portal-updated", handlePortalUpdate);
+  window.addEventListener("scout:reconcile-portal", handlePortalUpdate as EventListener);
   queueMicrotask(reconcile);
   return () => {
     observer?.disconnect();
     observer = null;
     window.removeEventListener("keydown", handleKeyDown, true);
+    window.removeEventListener("scout:portal-updated", handlePortalUpdate);
+    window.removeEventListener("scout:reconcile-portal", handlePortalUpdate as EventListener);
     closePanel();
     sidebarButton?.remove();
     sidebarButton = null;
