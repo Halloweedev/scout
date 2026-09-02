@@ -1,23 +1,58 @@
-name: Release candidate
+name: Publish release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Version label for the candidate, e.g. 0.1.0-alpha.1"
-        required: true
-        type: string
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: read
 
-concurrency:
-  group: scout-release-candidate
-  cancel-in-progress: false
-
 jobs:
+  metadata:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: release
+        name: Validate version metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)\.[0-9]+)?$ ]]; then
+            echo "Unsupported release tag: $tag"
+            echo "Use vX.Y.Z-alpha.N, vX.Y.Z-beta.N, or vX.Y.Z."
+            exit 1
+          fi
+
+          version="${tag#v}"
+          package_version="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
+          tauri_version="$(python3 -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["version"])')"
+          cargo_version="$(python3 -c 'import tomllib; print(tomllib.load(open("src-tauri/Cargo.toml", "rb"))["package"]["version"])')"
+
+          for candidate in "$package_version" "$tauri_version" "$cargo_version"; do
+            if [[ "$candidate" != "$version" ]]; then
+              echo "Release tag $tag does not match repository version $candidate."
+              echo "Update package.json, src-tauri/Cargo.toml, and src-tauri/tauri.conf.json to $version before tagging."
+              exit 1
+            fi
+          done
+
+          prerelease=false
+          if [[ "$version" == *-alpha.* || "$version" == *-beta.* ]]; then
+            prerelease=true
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
   build:
-    name: Release candidate (${{ matrix.label }})
+    name: Build ${{ matrix.label }} release
+    needs: metadata
     strategy:
       fail-fast: false
       matrix:
@@ -49,10 +84,51 @@ jobs:
       - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
       - name: Build release bundle
         run: pnpm tauri build --bundles ${{ matrix.bundle }}
-      - name: Upload release candidate
+      - name: Upload platform bundle
         uses: actions/upload-artifact@v4
         with:
-          name: scout-${{ inputs.version }}-${{ matrix.label }}
+          name: scout-${{ needs.metadata.outputs.version }}-${{ matrix.label }}
           path: src-tauri/target/release/bundle
           if-no-files-found: error
           retention-days: 14
+
+  publish:
+    name: Publish GitHub release
+    needs: [metadata, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Create release and attach installers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          mapfile -d '' installers < <(find dist -type f \( -name '*.deb' -o -name '*.dmg' -o -name '*.exe' \) -print0)
+          if [[ ${#installers[@]} -ne 3 ]]; then
+            echo "Expected exactly 3 installers (.deb, .dmg, .exe), found ${#installers[@]}."
+            printf '%s\n' "${installers[@]}"
+            exit 1
+          fi
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${installers[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+            exit 0
+          fi
+
+          args=(
+            --repo "$GITHUB_REPOSITORY"
+            --title "Scout ${TAG#v}"
+            --generate-notes
+          )
+          if [[ "$PRERELEASE" == "true" ]]; then
+            args+=(--prerelease)
+          fi
+
+          gh release create "$TAG" "${installers[@]}" "${args[@]}"
