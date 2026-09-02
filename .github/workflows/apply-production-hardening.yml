@@ -1,0 +1,27 @@
+name: Apply production hardening
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/apply-production-hardening.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/production_hardening.py
+      - run: git diff --check
+      - name: Commit production hardening
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.tsx src/quality-polish.css src-tauri/src/fs.rs src-tauri/src/lib.rs src-tauri/tauri.conf.json scripts/runtime_smoke_linux.sh .github/workflows/release.yml .github/workflows/release-candidate.yml README.md
+          git diff --cached --quiet && exit 0
+          git commit -m "Harden Scout for production"
+          git push
