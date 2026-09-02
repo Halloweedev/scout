@@ -2,10 +2,12 @@ import { listen } from "@tauri-apps/api/event";
 import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import Icon, { type IconName } from "./components/Icon";
 import {
+  clearDirCache,
   copyEntries,
   createFolder,
   duplicateEntries,
   getSpecialDirectories,
+  hydrateDirectory,
   listDirectory,
   moveEntries,
   openEntry,
@@ -18,6 +20,9 @@ import type { ClipboardState, DirectoryListing, ExplorerTab, FsEntry, SpecialDir
 
 const WORKSPACES_KEY = "scout.workspaces.v1";
 const LINKED_PANES_KEY = "scout.linked-panes.v1";
+const VIEW_KEY = "scout.view.v2";
+
+type ViewMode = "icons" | "list" | "columns" | "gallery";
 
 interface ContextMenuState {
   x: number;
@@ -147,12 +152,15 @@ export default function App() {
   const [renamePaneId, setRenamePaneId] = createSignal<string | null>(null);
   const [renameValue, setRenameValue] = createSignal("");
   const [contextMenu, setContextMenu] = createSignal<ContextMenuState | null>(null);
-  const [viewMode, setViewMode] = createSignal<"list" | "grid">((() => {
-    const v = localStorage.getItem("scout.view.v1");
-    return v === "grid" ? "grid" : "list";
+  const [viewMode, setViewMode] = createSignal<ViewMode>((() => {
+    const value = localStorage.getItem(VIEW_KEY) ?? localStorage.getItem("scout.view.v1");
+    if (value === "grid" || value === "icons") return "icons";
+    if (value === "columns" || value === "gallery") return value;
+    return "list";
   })());
   const [searchQuery, setSearchQuery] = createSignal("");
   const [toolbarMenuOpen, setToolbarMenuOpen] = createSignal(false);
+  const [viewMenuOpen, setViewMenuOpen] = createSignal(false);
   const [isDragging, setIsDragging] = createSignal(false);
   const [zoom, setZoom] = createSignal(1);
   const [sortBy, setSortBy] = createSignal<"name" | "modified" | "size">("name");
@@ -161,6 +169,7 @@ export default function App() {
   let rbStart: { x: number; y: number } | null = null;
   let stopFilesystemListener: (() => void) | undefined;
   let refreshTimer: number | undefined;
+  const paneLoadVersion = new Map<string, number>();
 
   const activeTab = createMemo(() => tabs().find((tab) => tab.id === activeTabId()) ?? null);
   const activePane = createMemo(() => panes().find((pane) => pane.id === activePaneId()) ?? null);
@@ -275,13 +284,22 @@ export default function App() {
     const current = paneById(id);
     if (!current) return null;
 
-    // Nautilus: show skeleton instantly, don't block UI
+    // Files/Finder-style navigation: enumerate names/types quickly, paint immediately,
+    // then hydrate expensive metadata off the UI path. A version token prevents a
+    // slower old folder request from overwriting a newer navigation.
+    const version = (paneLoadVersion.get(id) ?? 0) + 1;
+    paneLoadVersion.set(id, version);
+    const requestedHidden = showHidden();
     updatePane(id, (pane) => ({ ...pane, loading: true, error: options.silent ? pane.error : null }));
+
     try {
-      const listing = await listDirectory(path, showHidden());
+      const listing = await listDirectory(path, requestedHidden);
+      if (paneLoadVersion.get(id) !== version) return null;
+
+      const latest = paneById(id) ?? current;
       const pushHistory = options.pushHistory ?? true;
-      let history = current.history;
-      let historyIndex = current.historyIndex;
+      let history = latest.history;
+      let historyIndex = latest.historyIndex;
 
       if (options.resetHistory) {
         history = [listing.path];
@@ -289,12 +307,12 @@ export default function App() {
       } else if (options.historyIndex !== undefined) {
         historyIndex = options.historyIndex;
       } else if (pushHistory) {
-        history = [...current.history.slice(0, current.historyIndex + 1), listing.path];
+        history = [...latest.history.slice(0, latest.historyIndex + 1), listing.path];
         historyIndex = history.length - 1;
       }
 
       const nextPane: PaneState = {
-        ...current,
+        ...latest,
         title: listing.displayName,
         path: listing.path,
         listing,
@@ -309,12 +327,31 @@ export default function App() {
 
       if (id === activePaneId()) {
         setActiveListing(listing);
-        await watchDirectory(listing.path);
+        void watchDirectory(listing.path).catch((reason) => {
+          if (paneLoadVersion.get(id) === version) {
+            updatePane(id, (pane) => ({ ...pane, error: String(reason) }));
+          }
+        });
         if (options.syncTab !== false) syncTabToPane(nextPane);
       }
+
+      void hydrateDirectory(listing.path, requestedHidden)
+        .then((hydrated) => {
+          if (paneLoadVersion.get(id) !== version) return;
+          const pane = paneById(id);
+          if (!pane || pane.path !== hydrated.path) return;
+          updatePane(id, (candidate) => ({ ...candidate, listing: hydrated }));
+          if (id === activePaneId()) setActiveListing(hydrated);
+        })
+        .catch(() => {
+          // The fast listing is already usable. Metadata hydration is best-effort.
+        });
+
       return nextPane;
     } catch (reason) {
-      updatePane(id, (pane) => ({ ...pane, loading: false, error: options.silent ? pane.error : String(reason) }));
+      if (paneLoadVersion.get(id) === version) {
+        updatePane(id, (pane) => ({ ...pane, loading: false, error: options.silent ? pane.error : String(reason) }));
+      }
       return null;
     }
   }
@@ -357,7 +394,9 @@ export default function App() {
 
   async function reloadPane(id: string) {
     const pane = paneById(id);
-    if (pane) await loadPane(id, pane.path, { pushHistory: false });
+    if (!pane) return;
+    clearDirCache(pane.path);
+    await loadPane(id, pane.path, { pushHistory: false });
   }
 
   async function reloadActivePane() {
@@ -472,10 +511,30 @@ export default function App() {
     localStorage.setItem(LINKED_PANES_KEY, next ? "1" : "0");
   }
 
-  function cycleViewMode() {
-    const next = viewMode() === "list" ? "grid" : "list";
+  function setView(next: ViewMode) {
     setViewMode(next);
-    localStorage.setItem("scout.view.v1", next);
+    localStorage.setItem(VIEW_KEY, next);
+    setViewMenuOpen(false);
+  }
+
+  function cycleViewMode() {
+    const order: ViewMode[] = ["icons", "list", "columns", "gallery"];
+    const index = Math.max(0, order.indexOf(viewMode()));
+    setView(order[(index + 1) % order.length]);
+  }
+
+  function viewIcon(): IconName {
+    if (viewMode() === "icons") return "grid";
+    if (viewMode() === "columns") return "columns";
+    if (viewMode() === "gallery") return "image";
+    return "rows";
+  }
+
+  function viewContainerClass() {
+    if (viewMode() === "icons") return "file-grid";
+    if (viewMode() === "columns") return "file-columns";
+    if (viewMode() === "gallery") return "file-gallery";
+    return "file-list";
   }
 
   function saveWorkspace() {
@@ -709,7 +768,7 @@ export default function App() {
 
   function moveKeyboardSelection(delta: number) {
     const pane = activePane();
-    const entries = pane?.listing?.entries ?? [];
+    const entries = pane && pane.id === activePaneId() ? sortedEntries() : pane?.listing?.entries ?? [];
     if (!pane || !entries.length) return;
     const currentIndex = pane.selected.length ? entries.findIndex((entry) => entry.path === pane.selected[0]) : -1;
     const nextIndex = Math.min(Math.max(currentIndex + delta, 0), entries.length - 1);
@@ -727,7 +786,7 @@ export default function App() {
     if (modifier && key === "a") {
       event.preventDefault();
       const pane = activePane();
-      const entries = pane?.listing?.entries ?? [];
+      const entries = pane && pane.id === activePaneId() ? sortedEntries() : pane?.listing?.entries ?? [];
       if (pane) updatePane(pane.id, (c) => ({ ...c, selected: entries.map((e) => e.path), selectionAnchor: 0 }));
     } else if (modifier && key === "c" && selected.length) {
       event.preventDefault();
@@ -790,6 +849,7 @@ export default function App() {
   function closeContextMenu() {
     setContextMenu(null);
     setToolbarMenuOpen(false);
+    setViewMenuOpen(false);
   }
 
   function handleScoutNavigate(event: Event) {
@@ -813,6 +873,12 @@ export default function App() {
       setTabs([{ id: tabId, title: first.displayName, path: first.path, history: [first.path], historyIndex: 0 }]);
       setActiveTabId(tabId);
       setActiveListing(first);
+      void hydrateDirectory(first.path, showHidden()).then((hydrated) => {
+        const active = activePaneId();
+        if (!active) return;
+        updatePane(active, (candidate) => candidate.path === hydrated.path ? { ...candidate, listing: hydrated } : candidate);
+        if (paneById(active)?.path === hydrated.path) setActiveListing(hydrated);
+      }).catch(() => {});
       await watchDirectory(first.path);
     } catch (reason) {
       const pane = activePane();
@@ -898,24 +964,59 @@ export default function App() {
               <Show when={searchQuery()}><button class="search-clear" onClick={() => setSearchQuery("")}><Icon name="close" size={12} /></button></Show>
             </div>
             <div class="toolbar-view-group">
-              <button class="icon-button" onClick={cycleViewMode} aria-label="Change view" title={`View: ${viewMode()} (click to cycle)`}>
-                <Icon name={viewMode() === "grid" ? "grid" : "rows"} size={16} />
+              <button class="icon-button view-cycle" onClick={cycleViewMode} aria-label="Cycle view" title={`View: ${viewMode()}`}>
+                <Icon name={viewIcon()} size={16} />
               </button>
               <div class="toolbar-divider" />
-              <button class="icon-button toolbar-dropdown" onClick={(e) => { e.stopPropagation(); setToolbarMenuOpen(!toolbarMenuOpen()); }} aria-label="More">
+              <button
+                class="icon-button toolbar-dropdown"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setToolbarMenuOpen(false);
+                  setViewMenuOpen(!viewMenuOpen());
+                }}
+                aria-label="Choose view"
+                aria-haspopup="menu"
+                aria-expanded={viewMenuOpen()}
+              >
                 <Icon name="chevron-down" size={14} />
               </button>
+              <Show when={viewMenuOpen()}>
+                <div class="view-menu glass-surface" role="menu" onClick={(event) => event.stopPropagation()}>
+                  <button classList={{ selected: viewMode() === "icons" }} onClick={() => setView("icons")} role="menuitemradio" aria-checked={viewMode() === "icons"}>
+                    <span class="view-check">{viewMode() === "icons" ? "✓" : ""}</span><span>as Icons</span>
+                  </button>
+                  <button classList={{ selected: viewMode() === "list" }} onClick={() => setView("list")} role="menuitemradio" aria-checked={viewMode() === "list"}>
+                    <span class="view-check">{viewMode() === "list" ? "✓" : ""}</span><span>as List</span>
+                  </button>
+                  <button classList={{ selected: viewMode() === "columns" }} onClick={() => setView("columns")} role="menuitemradio" aria-checked={viewMode() === "columns"}>
+                    <span class="view-check">{viewMode() === "columns" ? "✓" : ""}</span><span>as Columns</span>
+                  </button>
+                  <button classList={{ selected: viewMode() === "gallery" }} onClick={() => setView("gallery")} role="menuitemradio" aria-checked={viewMode() === "gallery"}>
+                    <span class="view-check">{viewMode() === "gallery" ? "✓" : ""}</span><span>as Gallery</span>
+                  </button>
+                </div>
+              </Show>
+            </div>
+            <div class="toolbar-more">
+              <button
+                class="icon-button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setViewMenuOpen(false);
+                  setToolbarMenuOpen(!toolbarMenuOpen());
+                }}
+                aria-label="More options"
+                aria-haspopup="menu"
+                aria-expanded={toolbarMenuOpen()}
+              ><Icon name="more" size={17} /></button>
               <Show when={toolbarMenuOpen()}>
-                <div class="toolbar-dropdown-menu glass-surface" onClick={(e) => e.stopPropagation()}>
-                  <button onClick={() => { setViewMode("grid"); localStorage.setItem("scout.view.v1","grid"); setToolbarMenuOpen(false); }}><Icon name="grid" size={14} /> Grid <Show when={viewMode()==="grid"}><span class="check">✓</span></Show></button>
-                  <button onClick={() => { setViewMode("list"); localStorage.setItem("scout.view.v1","list"); setToolbarMenuOpen(false); }}><Icon name="rows" size={14} /> List <Show when={viewMode()==="list"}><span class="check">✓</span></Show></button>
+                <div class="toolbar-dropdown-menu glass-surface" role="menu" onClick={(event) => event.stopPropagation()}>
+                  <button onClick={() => { setToolbarMenuOpen(false); toggleLinkedPanes(); }}><Icon name="link" size={14} /> Linked panes <span class="menu-state">{linkedPanes() ? "✓" : ""}</span></button>
+                  <button disabled={panes().length >= 4} onClick={() => { setToolbarMenuOpen(false); void addPane(); }}><Icon name="split" size={14} /> Add pane</button>
+                  <button onClick={() => { setToolbarMenuOpen(false); void toggleHiddenFiles(); }}><Icon name={showHidden() ? "eye-slash" : "eye"} size={14} /> {showHidden() ? "Hide hidden files" : "Show hidden files"}</button>
                   <div class="menu-separator" />
-                  <button onClick={() => toggleLinkedPanes()}><Icon name="link" size={14} /> Linked {linkedPanes() ? "✓" : ""}</button>
-                  <button disabled={panes().length >= 4} onClick={() => { setToolbarMenuOpen(false); void addPane(); }}><Icon name="split" size={14} /> Add Pane</button>
-                  <button onClick={() => { setToolbarMenuOpen(false); void toggleHiddenFiles(); }}><Icon name={showHidden() ? "eye-slash" : "eye"} size={14} /> {showHidden() ? "Hide Hidden" : "Show Hidden"}</button>
-                  <div class="menu-separator" />
-                  <button onClick={() => { setToolbarMenuOpen(false); void makeFolder(); }}><Icon name="new-folder" size={14} /> New Folder</button>
-                  <button onClick={() => setToolbarMenuOpen(false)}><Icon name="gear" size={14} /> Settings</button>
+                  <button onClick={() => { setToolbarMenuOpen(false); void makeFolder(); }}><Icon name="new-folder" size={14} /> New folder</button>
                 </div>
               </Show>
             </div>
@@ -953,6 +1054,7 @@ export default function App() {
                   }
                 }}
               >
+                <Show when={pane.loading}><div class="directory-loading" aria-label="Loading folder"><span /></div></Show>
                 <Show when={viewMode() === "list"}>
                   <div class="file-header">
                     <div onClick={() => toggleSort("name")} style="cursor:pointer; user-select:none">Name {sortBy()==="name" ? (sortDir()==="asc" ? "∧" : "∨") : ""}</div>
@@ -960,7 +1062,7 @@ export default function App() {
                     <div class="size-cell" onClick={() => toggleSort("size")} style="cursor:pointer; user-select:none">Size {sortBy()==="size" ? (sortDir()==="asc" ? "∧" : "∨") : ""}</div>
                   </div>
                 </Show>
-                <div class={viewMode() === "grid" ? "file-grid" : "file-list"} style={zoom() !== 1 ? `zoom:${zoom()}` : ""} onPointerDown={(e) => handleRubberBandDown(pane.id, e as any)}>
+                <div class={viewContainerClass()} style={zoom() !== 1 ? `zoom:${zoom()}` : ""} onPointerDown={(e) => handleRubberBandDown(pane.id, e as any)}>
                   <For each={(pane.id === activePaneId() ? sortedEntries() : pane.listing?.entries ?? []) as any}>{(entry, index) => (
                     <div
                       class="pane-file-row"
@@ -968,7 +1070,9 @@ export default function App() {
                         "file-row": pane.id === activePaneId(),
                         selected: pane.selected.includes(entry.path),
                         cut: clipboard()?.mode === "move" && !!clipboard()?.paths.includes(entry.path),
-                        grid: viewMode() === "grid",
+                        grid: viewMode() === "icons",
+                        columns: viewMode() === "columns",
+                        gallery: viewMode() === "gallery",
                       }}
                       data-entry-index={index()}
                       data-entry-path={entry.path}
@@ -998,7 +1102,7 @@ export default function App() {
                       onDragEnd={() => setTimeout(() => setIsDragging(false), 80)}
                     >
                       <div class="name-cell">
-                        <span class="file-icon"><Icon name={iconForEntry(entry)} size={viewMode()==="grid" ? 32 : 17} weight={entry.kind==="directory" ? "fill" : "regular"} /></span>
+                        <span class="file-icon"><Icon name={iconForEntry(entry)} size={viewMode()==="icons" ? 42 : viewMode()==="gallery" ? 64 : 17} weight={entry.kind==="directory" ? "fill" : "regular"} /></span>
                         <Show when={renamePaneId() === pane.id && renamePath() === entry.path} fallback={<span class="file-name">{entry.name}</span>}>
                           <input
                             class="rename-input"
@@ -1042,8 +1146,6 @@ export default function App() {
           <button onClick={() => { focusPane(menu().paneId); void duplicateSelection(); }}>Duplicate <kbd>⌘D</kbd></button>
           <div class="menu-separator" />
           <button class="danger" onClick={() => { focusPane(menu().paneId); void trashSelection(); }}><Icon name="trash" size={14} />Move to Trash</button>
-          <div class="menu-separator" />
-          <button onClick={() => setContextMenu(null)}><Icon name="gear" size={14} /> Convert…</button>
         </div>
       )}</Show>
     </div>
