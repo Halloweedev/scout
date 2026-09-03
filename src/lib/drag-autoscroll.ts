@@ -70,7 +70,7 @@ function handlePointerMove(event: PointerEvent) {
     return;
   }
 
-  verticalTarget = hit.closest<HTMLElement>(".column-browser-list, .file-area");
+  verticalTarget = hit.closest<HTMLElement>(".column-browser-list, .file-area, .sidebar");
   horizontalTarget = hit.closest<HTMLElement>(".column-browser");
 
   if (verticalTarget && verticalTarget.scrollHeight > verticalTarget.clientHeight) {
