@@ -220,3 +220,18 @@ UX 5 focuses on keeping Scout arranged the way the user left it. Sidebar organiz
 - [x] HMR cleanup removes listeners, observers, timers, and cached state cleanly
 
 UX 6 makes returning somewhere feel continuous instead of freshly reset. It is intentionally an in-session UI-memory layer: filesystem state remains authoritative, stale item paths are never recreated, and Miller Columns keep their native path-driven navigation semantics.
+
+### UX 7 — Contextual action discovery
+
+- [x] Selecting files exposes a compact action bar without requiring a right-click or Command Palette round-trip
+- [x] The action bar resolves availability from the shared Actions Registry instead of maintaining a second action implementation
+- [x] Single- and multi-selection presets prioritize high-frequency actions while falling back to other available non-dangerous commands
+- [x] Up to five quick actions remain directly reachable and the strip stays horizontally usable in narrower layouts
+- [x] More shows only actions that overflowed the quick set, grouped by registry category with shortcut hints
+- [x] All Commands bridges directly into the existing Cmd/Ctrl+K Command Palette
+- [x] Dangerous actions retain distinct visual treatment rather than being promoted as fallback quick actions
+- [x] The overflow menu supports Arrow Up/Down, Home/End, Escape dismissal, focus restoration, viewport clamping, and resize repositioning
+- [x] Outside dismissal and action execution keep `aria-expanded` synchronized with the actual menu state
+- [x] Contextual-action listeners, observers, menu surfaces, and action-registry subscriptions clean up with the parent interaction layer
+
+UX 7 makes Scout's existing power discoverable at the moment it is relevant. It does not create new commands: the selection bar, overflow menu, context menus, Inspector, and Command Palette continue to resolve through the same Actions Registry.
