@@ -13,6 +13,18 @@ function runHistory(action: "navigation.back" | "navigation.forward") {
   });
 }
 
+function dispatchCanonicalHistoryShortcut(direction: "back" | "forward") {
+  // Registry actions advertise the native Windows/Linux Alt+Arrow aliases, but
+  // App's canonical history workflow is modifier+[ / ]. Replaying the native
+  // alias through the registry would otherwise re-enter this listener forever.
+  window.dispatchEvent(new KeyboardEvent("keydown", {
+    key: direction === "back" ? "[" : "]",
+    ctrlKey: true,
+    bubbles: true,
+    cancelable: true,
+  }));
+}
+
 function handlePointerDown(event: PointerEvent) {
   if (event.button !== 3 && event.button !== 4) return;
   if (isEditableTarget(event.target) && (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey)) return;
@@ -31,9 +43,17 @@ function handleAuxClick(event: MouseEvent) {
 function handleKeyDown(event: KeyboardEvent) {
   if (isMac || !event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
   if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+
   event.preventDefault();
-  event.stopPropagation();
-  runHistory(event.key === "ArrowLeft" ? "navigation.back" : "navigation.forward");
+  event.stopImmediatePropagation();
+
+  const direction = event.key === "ArrowLeft" ? "back" : "forward";
+  if (!event.isTrusted) {
+    dispatchCanonicalHistoryShortcut(direction);
+    return;
+  }
+
+  runHistory(direction === "back" ? "navigation.back" : "navigation.forward");
 }
 
 export function installMouseNavigation() {
