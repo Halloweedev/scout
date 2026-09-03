@@ -6,6 +6,7 @@ mod converters;
 mod directory;
 mod disk;
 mod duplicates;
+mod file_health;
 mod fs;
 mod history;
 mod images;
@@ -58,6 +59,8 @@ pub fn run() {
             disk::enqueue_folder_size_scan,
             duplicates::find_duplicate_files,
             duplicates::enqueue_duplicate_scan,
+            file_health::scan_file_health,
+            file_health::enqueue_file_health_scan,
             fs::special_directories,
             fs::rename_entry,
             fs::duplicate_entries,
