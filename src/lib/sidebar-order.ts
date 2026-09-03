@@ -5,6 +5,11 @@ interface SidebarOrderState {
   workspaces: string[];
 }
 
+interface SidebarLabelState {
+  bookmarks: Record<string, string>;
+  workspaces: Record<string, string>;
+}
+
 interface BookmarkRecord {
   id: string;
   path: string;
@@ -18,6 +23,7 @@ interface WorkspaceRecord {
 }
 
 const ORDER_KEY = "scout.sidebar-order.v1";
+const LABELS_KEY = "scout.sidebar-labels.v1";
 const BOOKMARKS_KEY = "scout.bookmarks.v1";
 const WORKSPACES_KEY = "scout.workspaces.v1";
 const DRAG_THRESHOLD = 5;
@@ -25,6 +31,8 @@ const DRAG_THRESHOLD = 5;
 let observer: MutationObserver | null = null;
 let reconcileQueued = false;
 let suppressClickUntil = 0;
+let activeRenameInput: HTMLInputElement | null = null;
+let cancelActiveRename: (() => void) | null = null;
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -45,6 +53,24 @@ function readOrder(): SidebarOrderState {
 
 function writeOrder(state: SidebarOrderState) {
   localStorage.setItem(ORDER_KEY, JSON.stringify(state));
+}
+
+function readLabels(): SidebarLabelState {
+  const value = readJson<Partial<SidebarLabelState>>(LABELS_KEY, {});
+  const normalize = (candidate: unknown) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return {} as Record<string, string>;
+    return Object.fromEntries(Object.entries(candidate as Record<string, unknown>)
+      .filter(([, label]) => typeof label === "string" && !!label.trim())
+      .map(([id, label]) => [id, (label as string).trim()]));
+  };
+  return {
+    bookmarks: normalize(value.bookmarks),
+    workspaces: normalize(value.workspaces),
+  };
+}
+
+function writeLabels(state: SidebarLabelState) {
+  localStorage.setItem(LABELS_KEY, JSON.stringify(state));
 }
 
 function records(kind: SidebarOrderKind) {
@@ -103,6 +129,22 @@ function workspaceIdForRow(row: HTMLElement, unused: WorkspaceRecord[]) {
   return exact?.id ?? unused[0]?.id ?? null;
 }
 
+function baseLabel(kind: SidebarOrderKind, id: string) {
+  if (kind === "bookmarks") {
+    const record = (records(kind) as BookmarkRecord[]).find((item) => item.id === id);
+    if (!record) return "Bookmark";
+    const explicit = record.label?.trim();
+    if (explicit) return explicit;
+    return record.path.split(/[\\/]/).filter(Boolean).at(-1) ?? record.path;
+  }
+  const record = (records(kind) as WorkspaceRecord[]).find((item) => item.id === id);
+  return record?.name?.trim() || "Workspace";
+}
+
+function labelElement(row: HTMLElement) {
+  return row.querySelector<HTMLElement>(".workspace-open > span:not(.workspace-count)");
+}
+
 function assignStableIds(kind: SidebarOrderKind) {
   const available = records(kind);
   const used = new Set(rowsFor(kind).map((row) => row.dataset.scoutSidebarOrderId).filter((id): id is string => !!id));
@@ -118,7 +160,9 @@ function assignStableIds(kind: SidebarOrderKind) {
     row.dataset.scoutSidebarOrderKind = kind;
     row.classList.add("scout-sidebar-order-row");
     row.setAttribute("aria-roledescription", "reorderable item");
-    row.title = "Drag to reorder · Alt+↑/↓";
+    row.title = "Drag to reorder · F2 rename · Alt+↑/↓";
+    const button = row.querySelector<HTMLElement>(".workspace-open");
+    button?.setAttribute("aria-keyshortcuts", "F2 Alt+ArrowUp Alt+ArrowDown");
     const index = unused.findIndex((item) => item.id === id);
     if (index >= 0) unused.splice(index, 1);
   }
@@ -155,10 +199,32 @@ function applyOrder(kind: SidebarOrderKind, persistNormalization = true) {
   }
 }
 
+function applyLabels(kind: SidebarOrderKind) {
+  const state = readLabels();
+  const validIds = new Set(records(kind).map((item) => item.id));
+  let changed = false;
+  for (const id of Object.keys(state[kind])) {
+    if (validIds.has(id)) continue;
+    delete state[kind][id];
+    changed = true;
+  }
+  if (changed) writeLabels(state);
+
+  for (const row of rowsFor(kind)) {
+    const id = row.dataset.scoutSidebarOrderId;
+    if (!id || row.classList.contains("scout-sidebar-renaming")) continue;
+    const label = state[kind][id] ?? baseLabel(kind, id);
+    const node = labelElement(row);
+    if (node && node.textContent !== label) node.textContent = label;
+  }
+}
+
 function reconcile() {
   reconcileQueued = false;
   applyOrder("bookmarks");
   applyOrder("workspaces");
+  applyLabels("bookmarks");
+  applyLabels("workspaces");
 }
 
 function queueReconcile() {
@@ -191,10 +257,76 @@ function toast(message: string) {
   window.dispatchEvent(new CustomEvent("scout:toast", { detail: { message } }));
 }
 
+function startRename(row: HTMLElement) {
+  const kind = kindForRow(row);
+  const id = row.dataset.scoutSidebarOrderId;
+  if (!kind || !id || activeRenameInput) return;
+
+  const labels = readLabels();
+  const fallback = baseLabel(kind, id);
+  const current = labels[kind][id] ?? labelElement(row)?.textContent?.trim() ?? fallback;
+  const input = document.createElement("input");
+  input.className = "scout-sidebar-rename-input";
+  input.type = "text";
+  input.value = current;
+  input.maxLength = 80;
+  input.spellcheck = false;
+  input.autocomplete = "off";
+  input.setAttribute("aria-label", `Rename ${kind === "bookmarks" ? "bookmark" : "workspace"}`);
+
+  let finished = false;
+  const finish = (commit: boolean) => {
+    if (finished) return;
+    finished = true;
+    const value = input.value.trim();
+    input.remove();
+    row.classList.remove("scout-sidebar-renaming");
+    activeRenameInput = null;
+    cancelActiveRename = null;
+
+    if (commit) {
+      const state = readLabels();
+      if (value && value !== fallback) state[kind][id] = value;
+      else delete state[kind][id];
+      writeLabels(state);
+      applyLabels(kind);
+      if (value) toast(`Renamed to ${value}`);
+    } else {
+      applyLabels(kind);
+    }
+
+    const button = row.querySelector<HTMLElement>(".workspace-open");
+    button?.focus({ preventScroll: true });
+  };
+
+  input.addEventListener("keydown", (event) => {
+    event.stopImmediatePropagation();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      finish(true);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      finish(false);
+    }
+  });
+  input.addEventListener("pointerdown", (event) => event.stopPropagation());
+  input.addEventListener("click", (event) => event.stopPropagation());
+  input.addEventListener("blur", () => finish(true), { once: true });
+
+  row.classList.add("scout-sidebar-renaming");
+  row.append(input);
+  activeRenameInput = input;
+  cancelActiveRename = () => finish(false);
+  queueMicrotask(() => {
+    input.focus({ preventScroll: true });
+    input.select();
+  });
+}
+
 function handlePointerDown(event: PointerEvent) {
   if (event.button !== 0) return;
   const target = event.target instanceof Element ? event.target : null;
-  if (!target || target.closest(".workspace-delete, .sidebar-section-action")) return;
+  if (!target || target.closest(".workspace-delete, .sidebar-section-action, .scout-sidebar-rename-input")) return;
   const row = target.closest<HTMLElement>(".scout-sidebar-order-row");
   if (!row) return;
   const kind = kindForRow(row);
@@ -267,7 +399,7 @@ function handlePointerDown(event: PointerEvent) {
     const targetId = hoverRow?.dataset.scoutSidebarOrderId;
     if (!targetId) return;
     if (!persistMove(kind, draggedId, targetId, hoverAfter)) return;
-    const label = row.querySelector<HTMLElement>(".workspace-open")?.textContent?.trim() || (kind === "bookmarks" ? "Bookmark" : "Workspace");
+    const label = labelElement(row)?.textContent?.trim() || (kind === "bookmarks" ? "Bookmark" : "Workspace");
     toast(`Reordered ${label}`);
   };
 
@@ -290,10 +422,18 @@ function handleClick(event: MouseEvent) {
 }
 
 function handleKeyDown(event: KeyboardEvent) {
-  if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
-  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
   const target = event.target instanceof Element ? event.target : null;
   const row = target?.closest<HTMLElement>(".scout-sidebar-order-row");
+
+  if (event.key === "F2" && !event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey && row) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    startRename(row);
+    return;
+  }
+
+  if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
+  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
   if (!row) return;
   const kind = kindForRow(row);
   const id = row.dataset.scoutSidebarOrderId;
@@ -323,6 +463,7 @@ export function installSidebarOrder() {
   window.addEventListener("keydown", handleKeyDown, true);
 
   return () => {
+    cancelActiveRename?.();
     observer?.disconnect();
     observer = null;
     reconcileQueued = false;
@@ -331,10 +472,14 @@ export function installSidebarOrder() {
     window.removeEventListener("keydown", handleKeyDown, true);
     document.body.classList.remove("scout-sidebar-order-active");
     clearDropHints();
+    activeRenameInput?.remove();
+    activeRenameInput = null;
+    cancelActiveRename = null;
     document.querySelectorAll<HTMLElement>(".scout-sidebar-order-row").forEach((row) => {
-      row.classList.remove("scout-sidebar-order-row", "scout-sidebar-order-dragging");
+      row.classList.remove("scout-sidebar-order-row", "scout-sidebar-order-dragging", "scout-sidebar-renaming");
       row.removeAttribute("aria-roledescription");
       row.removeAttribute("title");
+      row.querySelector<HTMLElement>(".workspace-open")?.removeAttribute("aria-keyshortcuts");
       delete row.dataset.scoutSidebarOrderId;
       delete row.dataset.scoutSidebarOrderKind;
     });
