@@ -1,4 +1,4 @@
-use crate::{queue::JobContext, tags};
+use crate::{queue::{self, JobContext}, tags};
 use serde::Serialize;
 use std::{
     path::{Path, PathBuf},
@@ -6,6 +6,7 @@ use std::{
     thread,
     time::Duration,
 };
+use tauri::AppHandle;
 
 pub(crate) const INTERNAL_TAG_PROGRAM: &str = "@scout/tag";
 
@@ -54,7 +55,7 @@ pub(crate) fn run_program_blocking(
         return Err("Program path cannot be empty".into());
     }
     if arguments.len() > 64 {
-        return Err("Scout automation supports at most 64 program arguments".into());
+        return Err("Scout supports at most 64 program arguments".into());
     }
     if arguments.iter().any(|argument| argument.len() > 4096) {
         return Err("A program argument is too long".into());
@@ -62,7 +63,7 @@ pub(crate) fn run_program_blocking(
 
     let item = PathBuf::from(&item_path);
     if !item.exists() {
-        return Err("Automation item no longer exists".into());
+        return Err("Action item no longer exists".into());
     }
 
     if program == INTERNAL_TAG_PROGRAM {
@@ -84,7 +85,8 @@ pub(crate) fn run_program_blocking(
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
     {
-        let directory = PathBuf::from(directory);
+        let rendered_directory = render_argument(&directory, &item);
+        let directory = PathBuf::from(rendered_directory);
         if !directory.is_dir() {
             return Err("Program working directory is not a directory".into());
         }
@@ -124,4 +126,55 @@ pub(crate) fn run_program_blocking(
             }
         }
     }
+}
+
+#[tauri::command]
+pub fn enqueue_program_action(
+    app: AppHandle,
+    label: String,
+    program: String,
+    arguments: Vec<String>,
+    working_directory: Option<String>,
+    paths: Vec<String>,
+) -> Result<u64, String> {
+    let label = label.trim().to_string();
+    if label.is_empty() {
+        return Err("Custom action name cannot be empty".into());
+    }
+    if paths.is_empty() {
+        return Err("Choose at least one item for the custom action".into());
+    }
+    if paths.len() > 1_000 {
+        return Err("A custom action can run on at most 1,000 items at once".into());
+    }
+    let program_check = program.trim();
+    if program_check.is_empty() {
+        return Err("Program path cannot be empty".into());
+    }
+    if program_check == INTERNAL_TAG_PROGRAM {
+        return Err("This program identifier is reserved by Scout".into());
+    }
+    let job_label = format!("{label} · {} {}", paths.len(), if paths.len() == 1 { "item" } else { "items" });
+    Ok(queue::enqueue_blocking(app, "custom-action", job_label, move |context| {
+        let total = paths.len();
+        let mut results = Vec::with_capacity(total);
+        for (index, path) in paths.into_iter().enumerate() {
+            if context.cancelled() {
+                return Err("Custom action cancelled".into());
+            }
+            context.progress(
+                Some(index as f64 / total as f64),
+                Some(format!("Running {label} · {}/{}", index + 1, total)),
+            );
+            results.push(run_program_blocking(
+                program.clone(),
+                arguments.clone(),
+                working_directory.clone(),
+                path,
+                &context,
+            )?);
+        }
+        context.progress(Some(1.0), Some(format!("{label} complete")));
+        Ok(results)
+    }))
 }

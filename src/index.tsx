@@ -4,7 +4,9 @@ import { installActionRegistry } from "./lib/actions";
 import { installAutomation } from "./lib/automation";
 import { installAutomationLive } from "./lib/automation-live";
 import { installCommandPalette } from "./lib/command-palette";
+import { installConversionRecipes } from "./lib/conversion-recipes";
 import { installConverters } from "./lib/converters";
+import { installCustomActions } from "./lib/custom-actions";
 import { installDiskMap } from "./lib/disk-map";
 import { installDuplicateFinder } from "./lib/duplicates";
 import { installFileHealth } from "./lib/file-health";
@@ -57,6 +59,7 @@ import "./ux-interactions.css";
 import "./m6.css";
 import "./file-health.css";
 import "./tag-collections.css";
+import "./custom-actions.css";
 
 const root = document.getElementById("root");
 
@@ -81,6 +84,8 @@ const thumbnailCleanup = installImageThumbnails();
 const globalSearchCleanup = installGlobalSearch();
 const utilitiesCleanup = installUtilities();
 const smartExtractCleanup = installSmartExtract();
+const conversionRecipesCleanup = installConversionRecipes();
+const customActionsCleanup = installCustomActions();
 const duplicateFinderCleanup = installDuplicateFinder();
 const diskMapCleanup = installDiskMap();
 const imageToolsCleanup = installImageTools();
@@ -105,6 +110,8 @@ if (import.meta.hot) {
     globalSearchCleanup();
     utilitiesCleanup();
     smartExtractCleanup();
+    conversionRecipesCleanup();
+    customActionsCleanup();
     duplicateFinderCleanup();
     diskMapCleanup();
     imageToolsCleanup();

@@ -94,6 +94,7 @@ pub fn run() {
             queue::operation_queue,
             queue::cancel_operation,
             queue::clear_finished_operations,
+            scripts::enqueue_program_action,
             search::index_status,
             search::rebuild_index,
             search::enqueue_index_rebuild,
