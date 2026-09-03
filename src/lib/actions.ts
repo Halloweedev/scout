@@ -44,6 +44,10 @@ const CONTEXT_MENU_CATEGORY_ORDER: ScoutActionCategory[] = [
   "Developer",
   "View",
 ];
+// App.tsx still owns a few native context-menu rows whose behavior is tightly
+// coupled to the current pane. Keep those actions discoverable elsewhere while
+// preventing the registry augmentation layer from rendering a second copy.
+const APP_OWNED_CONTEXT_MENU_ACTIONS = new Set(["file.open-new-tab"]);
 let observer: MutationObserver | null = null;
 let reconcileQueued = false;
 
@@ -121,7 +125,7 @@ export function onActionsChanged(listener: () => void) {
 function enhanceContextMenu(menu: HTMLElement) {
   const context = actionContext();
   const contextual = availableActions(context)
-    .filter((action) => action.contextMenu)
+    .filter((action) => action.contextMenu && !APP_OWNED_CONTEXT_MENU_ACTIONS.has(action.id))
     .sort((a, b) => contextMenuCategoryRank(a.category) - contextMenuCategoryRank(b.category)
       || (a.contextMenuOrder ?? 100) - (b.contextMenuOrder ?? 100)
       || a.title.localeCompare(b.title));
