@@ -68,6 +68,11 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - When focus is inside the sidebar, Arrow Up/Down moves through visible section headings and primary destinations; Home/End jump to the first or last visible control.
 - Printable-character type-ahead in the sidebar moves focus to the next visible matching section or destination and wraps through the current sidebar contents.
 - Hidden/collapsed sidebar content is excluded from keyboard traversal and type-ahead.
+- Bookmarks and Workspaces can be reordered directly with a pointer drag; insertion feedback shows the resulting position and edge-hovering scrolls long sidebars.
+- Bookmark and Workspace order persists by stable item ID across launches, additions, removals, and collapsed-section startup states.
+- Alt+Arrow Up/Down reorders the focused Bookmark or Workspace while ordinary unmodified Arrow Up/Down remains reserved for sidebar focus traversal.
+- A reorder does not commit when the gesture is cancelled, released back over the source without a destination, or produces no actual order change.
+- A completed reorder suppresses the incidental click that would otherwise open the dragged Bookmark or Workspace on pointer release.
 - Sidebar visibility is persistent and available through the shared `Toggle Sidebar` action.
 - macOS uses Control+Cmd+S for Toggle Sidebar; Windows/Linux use Ctrl+Shift+B.
 - Hiding the sidebar moves focus back into the active explorer when focus was inside the sidebar, and showing it preserves the previously configured width and disclosure state.
@@ -165,4 +170,4 @@ UX & Interaction 3.0 adds scalable navigation chrome: overflow-safe tabs/sidebar
 
 UX & Interaction 4.0 adds dense daily-driver controls without new backend systems: persisted resizable List columns, keyboard-sortable headers, registry-backed folder-background actions, menu type-ahead, and complete tab-strip keyboard semantics with conflict-free platform shortcuts.
 
-UX & Interaction 5.0 adds persistent workspace organization: collapsible and keyboard-traversable sidebar sections, persistent sidebar visibility, and per-folder List sorting integrated into the existing folder-view preference model.
+UX & Interaction 5.0 adds persistent workspace organization: collapsible and keyboard-traversable sidebar sections, persisted Bookmark/Workspace ordering, persistent sidebar visibility, and per-folder List sorting integrated into the existing folder-view preference model.
