@@ -84,6 +84,16 @@ function selectedContextRow() {
     ?? pane.querySelector<HTMLElement>(".pane-file-row.selected");
 }
 
+function ownsFileContextRequest(event: KeyboardEvent) {
+  const target = event.target instanceof Element
+    ? event.target
+    : document.activeElement instanceof Element ? document.activeElement : null;
+  if (!target || target.closest("input, textarea, select, [contenteditable='true']")) return false;
+  const area = target.closest<HTMLElement>(".file-area");
+  const pane = area?.closest<HTMLElement>(".explorer-pane");
+  return !!area && !!pane?.classList.contains("active");
+}
+
 function openKeyboardContextMenu(event: KeyboardEvent) {
   const row = selectedContextRow();
   if (!row) return false;
@@ -170,7 +180,7 @@ function handleKeyDown(event: KeyboardEvent) {
 
   if (!menu) {
     resetTypeahead();
-    if (keyboardMenuRequest) openKeyboardContextMenu(event);
+    if (keyboardMenuRequest && ownsFileContextRequest(event)) openKeyboardContextMenu(event);
     return;
   }
 
