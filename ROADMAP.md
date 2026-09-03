@@ -119,6 +119,7 @@ M6's implementation baseline is complete. Scout's power features now converge on
 - [x] Git commands exposed through the shared Actions Registry and Command Palette
 - [x] Git subprocesses invoked directly with argument arrays rather than shell command strings
 - [x] Ambient Git state in every file view with direct-file markers, nested-change folder hints, and pane-level branch/change context
+- [x] Selection-aware Git context-menu actions that only surface Diff, Stage, Unstage, or Discard when the selected state supports them
 
 M7's implementation baseline is complete. Scout is intentionally developer-aware rather than a full Git client: commit authoring, history visualization, remotes, pull requests, and hosting-service workflows remain outside this baseline.
 
@@ -130,6 +131,7 @@ M7's implementation baseline is complete. Scout is intentionally developer-aware
 - [x] Shift-range and spatial keyboard navigation
 - [x] Home/End and filename type-ahead
 - [x] Platform-aware open/rename shortcuts
+- [x] Mouse back/forward buttons mapped to Scout pane history
 - [x] Selection restoration after same-folder mutations
 - [x] Focus and accessibility semantics
 
@@ -138,6 +140,7 @@ M7's implementation baseline is complete. Scout is intentionally developer-aware
 - [x] Explicit Move/Copy drag intent with destination feedback
 - [x] Invalid/no-op/recursive drop protection
 - [x] Spring-loaded folders while dragging
+- [x] Breadcrumb ancestors as direct Move/Copy drop destinations
 - [x] Direct tab drag/reordering with visible-order close behavior
 - [x] Compact live Operations HUD with progress and terminal states
 - [x] Immediate Undo/Redo affordance backed by persistent Footprints history
