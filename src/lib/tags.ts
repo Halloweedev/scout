@@ -1,23 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
+import { registerAction } from "./actions";
 
 interface TaggedPath {
   path: string;
   tags: string[];
 }
 
-let observer: MutationObserver | null = null;
 let overlay: HTMLDivElement | null = null;
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string) {
   const node = document.createElement(tag);
   if (className) node.className = className;
   return node;
-}
-
-function selectedPaths() {
-  return [...document.querySelectorAll<HTMLElement>(".explorer-pane.active .pane-file-row.selected")]
-    .map((row) => row.dataset.entryPath)
-    .filter((path): path is string => !!path);
 }
 
 function parseTags(value: string) {
@@ -34,8 +28,7 @@ function close() {
   overlay = null;
 }
 
-async function openTags() {
-  const paths = selectedPaths();
+async function openTags(paths: string[]) {
   if (!paths.length) return;
   close();
   const current = await invoke<TaggedPath[]>("tags_for_paths", { paths });
@@ -65,7 +58,7 @@ async function openTags() {
       remove.textContent = "Remove";
       remove.addEventListener("click", async () => {
         await invoke("remove_tags", { paths, tags: [tag] });
-        void openTags();
+        void openTags(paths);
       });
       row.append(name, remove);
       list.append(row);
@@ -93,7 +86,7 @@ async function openTags() {
     add.disabled = true;
     try {
       await invoke("add_tags", { paths, tags });
-      void openTags();
+      void openTags(paths);
     } finally {
       add.disabled = false;
     }
@@ -109,32 +102,19 @@ async function openTags() {
   input.focus();
 }
 
-function enhanceMenu(menu: HTMLElement) {
-  if (menu.dataset.tagsEnhanced === "1") return;
-  menu.dataset.tagsEnhanced = "1";
-  if (!selectedPaths().length) return;
-  const separator = element("div", "menu-separator");
-  const button = element("button");
-  button.type = "button";
-  button.textContent = "Tags…";
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    menu.remove();
-    void openTags();
-  });
-  menu.append(separator, button);
-}
-
-function reconcile() {
-  document.querySelectorAll<HTMLElement>(".context-menu").forEach(enhanceMenu);
-}
-
 export function installTags() {
-  observer = new MutationObserver(reconcile);
-  observer.observe(document.body, { childList: true, subtree: true });
+  const unregister = registerAction({
+    id: "tags.edit",
+    title: "Edit Tags…",
+    category: "Tools",
+    keywords: ["tag", "label", "organize", "metadata"],
+    contextMenu: true,
+    contextMenuOrder: 70,
+    available: (context) => context.selectedPaths.length > 0,
+    run: (context) => openTags(context.selectedPaths),
+  });
   return () => {
-    observer?.disconnect();
-    observer = null;
+    unregister();
     close();
   };
 }
