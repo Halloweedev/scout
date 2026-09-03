@@ -35,12 +35,9 @@ function clearFilter() {
   input.focus({ preventScroll: true });
 }
 
-function contextualActions() {
+function registryActions() {
   const context = actionContext();
-  return {
-    context,
-    actions: new Map(availableActions(context).map((action) => [action.id, action])),
-  };
+  return new Map(availableActions(context).map((action) => [action.id, action]));
 }
 
 function actionButton(action: ScoutAction, label = action.title) {
@@ -109,17 +106,16 @@ function renderEmptyState(area: HTMLElement) {
     detail.textContent = `Nothing here matches “${query}”.`;
     actions.append(simpleButton("Clear Filter", clearFilter, true));
 
-    const { actions: registryActions } = contextualActions();
-    const deepSearch = registryActions.get("navigation.deep-search");
+    const deepSearch = registryActions().get("navigation.deep-search");
     if (deepSearch) actions.append(actionButton(deepSearch, "Search Everywhere"));
   } else {
     eyebrow.textContent = "Folder";
     title.textContent = "Empty folder";
     detail.textContent = "Drop files here, paste something, or create a folder to get started.";
 
-    const { actions: registryActions } = contextualActions();
-    const newFolder = registryActions.get("file.new-folder");
-    const paste = registryActions.get("clipboard.paste");
+    const actionsById = registryActions();
+    const newFolder = actionsById.get("file.new-folder");
+    const paste = actionsById.get("clipboard.paste");
     if (newFolder) actions.append(actionButton(newFolder, "New Folder"));
     if (paste) actions.append(actionButton(paste, "Paste"));
   }
@@ -182,6 +178,10 @@ function renderError(area: HTMLElement) {
   return true;
 }
 
+function discardOwnMutations() {
+  observer?.takeRecords();
+}
+
 function syncLoading(area: HTMLElement) {
   if (loadingTimer !== undefined) {
     window.clearTimeout(loadingTimer);
@@ -198,6 +198,7 @@ function syncLoading(area: HTMLElement) {
     label.setAttribute("role", "status");
     label.textContent = "Loading folder…";
     currentArea.append(label);
+    discardOwnMutations();
   }, 450);
 }
 
@@ -207,9 +208,13 @@ function reconcile() {
   removeGenerated();
 
   const area = activeArea();
-  if (!area) return;
+  if (!area) {
+    discardOwnMutations();
+    return;
+  }
   if (!renderError(area)) renderEmptyState(area);
   syncLoading(area);
+  discardOwnMutations();
 }
 
 function queueReconcile() {
