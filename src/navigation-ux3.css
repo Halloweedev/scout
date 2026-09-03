@@ -1,0 +1,68 @@
+.ux3-navigation-menu {
+  position: fixed;
+  z-index: 120;
+  width: min(330px, calc(100vw - 16px));
+  max-height: min(440px, calc(100vh - 16px));
+  overflow: auto;
+  padding: 5px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 10px;
+  background: rgb(24 24 26 / 96%);
+  box-shadow: 0 20px 60px rgb(0 0 0 / 44%);
+  backdrop-filter: blur(24px) saturate(120%);
+}
+
+.ux3-menu-item {
+  width: 100%;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: rgb(255 255 255 / 82%);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.ux3-menu-item:hover:not(:disabled),
+.ux3-menu-item:focus-visible {
+  outline: none;
+  background: rgb(255 255 255 / 8%);
+  color: rgb(255 255 255 / 96%);
+}
+
+.ux3-menu-item:disabled { opacity: 0.34; }
+.ux3-menu-mark { width: 18px; color: rgb(255 255 255 / 58%); font-size: 11px; text-align: center; }
+.ux3-menu-copy { min-width: 0; display: grid; gap: 2px; }
+.ux3-menu-label,
+.ux3-menu-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ux3-menu-label { font-size: 11.5px; font-weight: 560; }
+.ux3-menu-detail { color: rgb(255 255 255 / 38%); font-size: 9.5px; }
+.ux3-menu-separator { height: 1px; margin: 4px 5px; background: rgb(255 255 255 / 8%); }
+
+.breadcrumbs .ux3-breadcrumb-trigger {
+  min-width: 15px;
+  border-radius: 5px;
+  cursor: default;
+  transition: background 110ms ease, color 110ms ease;
+}
+
+.breadcrumbs .ux3-breadcrumb-trigger:hover,
+.breadcrumbs .ux3-breadcrumb-trigger:focus-visible {
+  outline: none;
+  background: rgb(255 255 255 / 7%);
+  color: rgb(255 255 255 / 72%);
+}
+
+.explorer-pane .file-area:focus-visible {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .breadcrumbs .ux3-breadcrumb-trigger { transition: none; }
+}
