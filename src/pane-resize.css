@@ -1,0 +1,85 @@
+.pane-grid {
+  position: relative;
+  --scout-pane-column: 50%;
+  --scout-pane-row: 50%;
+}
+
+.pane-grid.panes-2,
+.pane-grid.panes-3,
+.pane-grid.panes-4 {
+  grid-template-columns: minmax(0, var(--scout-pane-column)) minmax(0, 1fr) !important;
+}
+
+.pane-grid.panes-3,
+.pane-grid.panes-4 {
+  grid-template-rows: minmax(0, var(--scout-pane-row)) minmax(0, 1fr) !important;
+}
+
+.pane-resize-handle {
+  position: absolute;
+  z-index: 55;
+  touch-action: none;
+  outline: none;
+}
+
+.pane-resize-handle.column {
+  top: 0;
+  bottom: 0;
+  left: var(--scout-pane-column);
+  width: 7px;
+  transform: translateX(-3px);
+  cursor: col-resize;
+}
+
+.pane-resize-handle.row {
+  left: 0;
+  right: 0;
+  top: var(--scout-pane-row);
+  height: 7px;
+  transform: translateY(-3px);
+  cursor: row-resize;
+}
+
+.pane-resize-handle.row.right-only {
+  left: var(--scout-pane-column);
+}
+
+.pane-resize-handle::after {
+  content: "";
+  position: absolute;
+  background: transparent;
+  transition: background 100ms ease;
+}
+
+.pane-resize-handle.column::after {
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+}
+
+.pane-resize-handle.row::after {
+  left: 0;
+  right: 0;
+  top: 3px;
+  height: 1px;
+}
+
+.pane-resize-handle:hover::after,
+.pane-resize-handle:focus-visible::after,
+.pane-resizing-columns .pane-resize-handle.column::after,
+.pane-resizing-rows .pane-resize-handle.row::after {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.pane-resizing-columns,
+.pane-resizing-columns * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+.pane-resizing-rows,
+.pane-resizing-rows * {
+  cursor: row-resize !important;
+  user-select: none !important;
+}
