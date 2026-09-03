@@ -37,7 +37,8 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Ctrl+Tab and Ctrl+Shift+Tab cycle tabs in visual order.
 - macOS also supports Cmd+Shift+[ and Cmd+Shift+] for previous/next tab; Windows/Linux support Ctrl+PageUp and Ctrl+PageDown.
 - Scout preserves Cmd/Ctrl+1 through Cmd/Ctrl+4 for Icons, List, Columns, and Gallery view switching instead of overloading those shortcuts for numbered tabs.
-- Windows/Linux Alt+Left and Alt+Right navigate pane history; Alt+Up navigates to the parent folder unless focus is inside a reorderable Bookmark or Workspace row, where Alt+Up belongs to sidebar reordering.
+- Windows/Linux Alt+Left and Alt+Right navigate pane history when focus is outside editable controls; Alt+Up navigates to the parent folder unless focus is inside a reorderable Bookmark or Workspace row, where Alt+Up belongs to sidebar reordering.
+- Registry-triggered history navigation must converge on Scout's canonical App history workflow rather than replaying the native Alt+Left/Right alias back into the registry.
 
 ## Focus and accessibility
 
@@ -79,6 +80,8 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Empty/custom labels equal to the underlying default fall back to the authoritative Bookmark or Workspace name instead of storing redundant aliases.
 - Custom sidebar labels are presentation aliases stored by stable item ID; the existing Bookmark and Workspace records remain authoritative for paths, pane layouts, creation, and deletion.
 - Aliases survive relaunch and ordinary additions/removals, and stale aliases are discarded when their stable item no longer exists.
+- Plain Delete removes a focused Bookmark or Workspace through its existing sidebar remove control; macOS also accepts plain Backspace for the same focused sidebar operation.
+- File-destructive delete variants are consumed while a Bookmark or Workspace row owns focus so a stale active-pane file selection cannot be trashed from the wrong interaction surface.
 - Sidebar visibility is persistent and available through the shared `Toggle Sidebar` action.
 - macOS uses Control+Cmd+S for Toggle Sidebar; Windows/Linux use Ctrl+Shift+B.
 - Hiding the sidebar moves focus back into the active explorer when focus was inside the sidebar, and showing it preserves the previously configured width and disclosure state.
@@ -127,6 +130,16 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - The overflow footer opens All Commands in the existing Cmd/Ctrl+K Command Palette instead of creating another exhaustive action browser.
 - Contextual overflow keyboard navigation supports Arrow Up/Down, Home/End, and Escape; dismissing the menu restores truthful `aria-expanded` state and Escape restores focus to the trigger.
 - Contextual action menus stay viewport-clamped, reposition on window resize, and close when the user interacts outside them or executes an action.
+
+## Actionable explorer states
+
+- Empty folders keep the underlying empty state authoritative while adding New Folder and Paste recovery actions whenever the shared Actions Registry exposes them.
+- A non-empty current-folder filter with no matches exposes Clear Filter plus Search Everywhere; Search Everywhere runs the canonical `navigation.global-search` action.
+- Active-pane load failures keep the original error visible and add Retry through `navigation.refresh` plus Go to Parent through `navigation.parent` only when a parent location is actually available.
+- Loading feedback appears only after a short delay so normal fast local navigation does not flash additional status copy.
+- Recovery UI is generated only for the active pane and must preserve the source empty/error accessibility state so cleanup can restore it exactly.
+- Recovery-generated DOM mutations must not cause a self-sustaining observer loop; registry actions remain the source of behavior rather than recovery-specific filesystem/navigation implementations.
+- HMR disposal removes generated recovery surfaces, restores source states, disconnects observers/listeners, and cancels pending delayed loading feedback.
 
 ## Drag and drop
 
@@ -192,8 +205,10 @@ UX & Interaction 3.0 adds scalable navigation chrome: overflow-safe tabs/sidebar
 
 UX & Interaction 4.0 adds dense daily-driver controls without new backend systems: persisted resizable List columns, keyboard-sortable headers, registry-backed folder-background actions, menu type-ahead, and complete tab-strip keyboard semantics with conflict-free platform shortcuts.
 
-UX & Interaction 5.0 adds persistent workspace organization: collapsible and keyboard-traversable sidebar sections, persisted Bookmark/Workspace ordering and custom labels, persistent sidebar visibility, and per-folder List sorting integrated into the existing folder-view preference model.
+UX & Interaction 5.0 adds persistent workspace organization: collapsible and keyboard-traversable sidebar sections, persisted Bookmark/Workspace ordering and custom labels, focus-safe sidebar removal, persistent sidebar visibility, and per-folder List sorting integrated into the existing folder-view preference model.
 
 UX & Interaction 6.0 adds bounded in-session folder/view navigation memory so returning through history, tabs, or folder navigation restores position and surviving selection without changing filesystem authority.
 
 UX & Interaction 7.0 adds a compact selection-aware action surface that exposes the existing Actions Registry at the moment of selection, with overflow and Command Palette escalation instead of duplicated command implementations.
+
+UX & Interaction 8.0 adds actionable empty, no-match, loading, and failure states that reuse Scout's existing registry actions and preserve filesystem/navigation authority rather than implementing parallel recovery workflows.

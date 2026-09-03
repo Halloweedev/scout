@@ -132,7 +132,7 @@ M7's implementation baseline is complete. Scout is intentionally developer-aware
 - [x] Home/End and filename type-ahead
 - [x] Platform-aware open/rename shortcuts
 - [x] Mouse back/forward buttons mapped to Scout pane history
-- [x] Native Alt+Left/Right pane-history navigation on Windows and Linux
+- [x] Native Alt+Left/Right pane-history navigation on Windows and Linux without hijacking editable controls or recursively re-entering registry dispatch
 - [x] Native Alt+Up parent-folder navigation on Windows and Linux
 - [x] Ctrl+Tab / Ctrl+Shift+Tab cycles tabs in visual order
 - [x] Middle-click and Cmd/Ctrl-click navigation chrome opens breadcrumbs and sidebar folders in new tabs
@@ -203,10 +203,12 @@ UX 4 improves high-frequency desktop file-manager work without adding new backen
 - [x] Cancelled, same-row, and no-destination reorder gestures remain no-ops instead of mutating order or activating the row
 - [x] Bookmarks and Workspaces support F2 inline custom labels with Enter/blur commit and Escape cancellation
 - [x] Custom sidebar labels persist by stable item ID while underlying Bookmark/Workspace records remain authoritative
+- [x] Focused Bookmarks and Workspaces support plain Delete removal, plus plain Backspace on macOS, through the existing sidebar remove workflow
+- [x] File-destructive delete variants cannot leak into the active explorer selection while a Bookmark or Workspace row owns keyboard focus
 - [x] Per-folder view preferences now include List sort column and direction
 - [x] Saved List sorting restores safely across folder navigation, view changes, and opposite-direction same-column states
 
-UX 5 focuses on keeping Scout arranged the way the user left it. Sidebar organization, ordering, naming, visibility, keyboard traversal, view choice, and List sorting all reuse persistent UI state rather than adding backend concepts or duplicate preference stores.
+UX 5 focuses on keeping Scout arranged the way the user left it. Sidebar organization, ordering, naming, visibility, keyboard traversal, focus-safe management, view choice, and List sorting all reuse persistent UI state rather than adding backend concepts or duplicate preference stores.
 
 ### UX 6 — Navigation memory and continuity
 
@@ -235,3 +237,17 @@ UX 6 makes returning somewhere feel continuous instead of freshly reset. It is i
 - [x] Contextual-action listeners, observers, menu surfaces, and action-registry subscriptions clean up with the parent interaction layer
 
 UX 7 makes Scout's existing power discoverable at the moment it is relevant. It does not create new commands: the selection bar, overflow menu, context menus, Inspector, and Command Palette continue to resolve through the same Actions Registry.
+
+### UX 8 — Actionable explorer states
+
+- [x] Empty folders expose New Folder and Paste through the existing Actions Registry when those actions are available
+- [x] Current-folder filters with no matches expose Clear Filter and Search Everywhere instead of leaving the user at a dead end
+- [x] Search Everywhere resolves through the canonical `navigation.global-search` registry action
+- [x] Active-pane load failures preserve the original error and expose Retry plus Go to Parent when a parent is actually available
+- [x] Retry and parent recovery reuse `navigation.refresh` and `navigation.parent` instead of duplicating navigation/filesystem logic
+- [x] Slow folder loads expose restrained delayed loading feedback without flashing extra copy during normal fast local navigation
+- [x] Recovery surfaces are scoped to the active pane and preserve the underlying empty/error state for cleanup and accessibility restoration
+- [x] Recovery-generated DOM mutations are drained/ignored so the observer cannot sustain its own reconciliation loop
+- [x] Recovery listeners, observers, delayed feedback, and generated UI clean up completely during HMR disposal
+
+UX 8 makes empty, filtered, loading, and failed explorer states actionable without introducing another operation or command system. Recovery UI remains a presentation layer over Scout's existing Actions Registry and filesystem/navigation state.
