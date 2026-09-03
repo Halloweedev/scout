@@ -18,7 +18,12 @@ export interface OperationJob<T = unknown> {
 let observer: MutationObserver | null = null;
 let pollTimer: number | undefined;
 let panel: HTMLDivElement | null = null;
+let hud: HTMLButtonElement | null = null;
+let hudDismissTimer: number | undefined;
 let cachedJobs: OperationJob[] = [];
+let previousStatuses = new Map<number, OperationJob["status"]>();
+let seededStatuses = false;
+let recentTerminal: OperationJob | null = null;
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string) {
   const node = document.createElement(tag);
@@ -59,8 +64,16 @@ export async function enqueueAndWait<T>(
   }
 }
 
+function activeJobs() {
+  return cachedJobs.filter((job) => job.status === "queued" || job.status === "running");
+}
+
 function activeCount() {
-  return cachedJobs.filter((job) => job.status === "queued" || job.status === "running").length;
+  return activeJobs().length;
+}
+
+function latestActive() {
+  return activeJobs().sort((a, b) => b.id - a.id)[0] ?? null;
 }
 
 function closePanel() {
@@ -76,7 +89,9 @@ function statusLabel(job: OperationJob) {
 function renderPanel() {
   if (!panel) return;
   const body = panel.querySelector<HTMLElement>(".operation-queue-body");
+  const subtitle = panel.querySelector<HTMLElement>(".operation-queue-subtitle");
   if (!body) return;
+  if (subtitle) subtitle.textContent = activeCount() ? `${activeCount()} active` : "Recent activity";
   body.replaceChildren();
 
   if (!cachedJobs.length) {
@@ -122,6 +137,8 @@ function openPanel() {
   closePanel();
   panel = element("div", "operation-queue-backdrop");
   const sheet = element("section", "operation-queue-sheet");
+  sheet.setAttribute("role", "dialog");
+  sheet.setAttribute("aria-label", "Operations");
   const header = element("header", "operation-queue-header");
   const heading = element("div");
   const title = element("div", "operation-queue-title");
@@ -137,6 +154,7 @@ function openPanel() {
     await invoke<void>("clear_finished_operations");
     cachedJobs = await operationJobs();
     renderPanel();
+    renderHud();
   });
   const close = element("button", "operation-queue-text-button");
   close.type = "button";
@@ -184,27 +202,140 @@ function updateSidebar() {
   }
 }
 
+function ensureHud() {
+  if (hud?.isConnected) return hud;
+  hud = element("button", "operation-queue-hud");
+  hud.type = "button";
+  hud.hidden = true;
+  hud.setAttribute("aria-live", "polite");
+  hud.setAttribute("aria-label", "Open Operations");
+  hud.addEventListener("click", openPanel);
+  document.body.append(hud);
+  return hud;
+}
+
+function terminalIcon(status: OperationJob["status"]) {
+  if (status === "completed") return "✓";
+  if (status === "failed") return "!";
+  if (status === "cancelled") return "×";
+  return "•";
+}
+
+function renderHud() {
+  const node = ensureHud();
+  const active = latestActive();
+  const job = active ?? recentTerminal;
+
+  if (!job) {
+    node.hidden = true;
+    node.replaceChildren();
+    node.className = "operation-queue-hud";
+    return;
+  }
+
+  node.hidden = false;
+  node.className = `operation-queue-hud ${active ? "active" : `terminal ${job.status}`}`;
+  const icon = element("span", "operation-hud-icon");
+  icon.textContent = active ? (job.status === "queued" ? "…" : "•") : terminalIcon(job.status);
+  const copy = element("span", "operation-hud-copy");
+  const label = element("strong", "operation-hud-label");
+  label.textContent = job.label;
+  const detail = element("span", "operation-hud-detail");
+
+  if (active) {
+    if (job.status === "queued") detail.textContent = "Waiting…";
+    else if (job.progress != null) detail.textContent = `${Math.round(job.progress * 100)}%${job.detail ? ` · ${job.detail}` : ""}`;
+    else detail.textContent = job.detail ?? "Working…";
+  } else if (job.status === "completed") {
+    detail.textContent = "Finished";
+  } else if (job.status === "failed") {
+    detail.textContent = job.error ?? "Failed";
+  } else {
+    detail.textContent = "Cancelled";
+  }
+
+  copy.append(label, detail);
+  node.append(icon, copy);
+
+  if (active && job.progress != null) {
+    const progress = element("span", "operation-hud-progress");
+    const fill = element("span", "operation-hud-progress-fill");
+    fill.style.width = `${Math.max(0, Math.min(100, job.progress * 100))}%`;
+    progress.append(fill);
+    node.append(progress);
+  }
+
+  const count = activeCount();
+  if (active && count > 1) {
+    const badge = element("span", "operation-hud-count");
+    badge.textContent = `+${count - 1}`;
+    node.append(badge);
+  }
+}
+
+function noteTransitions(next: OperationJob[]) {
+  if (!seededStatuses) {
+    previousStatuses = new Map(next.map((job) => [job.id, job.status]));
+    seededStatuses = true;
+    return;
+  }
+
+  const terminal = next
+    .filter((job) => {
+      const previous = previousStatuses.get(job.id);
+      return previous !== job.status && (job.status === "completed" || job.status === "failed" || job.status === "cancelled");
+    })
+    .sort((a, b) => b.id - a.id)[0] ?? null;
+
+  previousStatuses = new Map(next.map((job) => [job.id, job.status]));
+  if (!terminal) return;
+
+  recentTerminal = terminal;
+  if (hudDismissTimer !== undefined) window.clearTimeout(hudDismissTimer);
+  hudDismissTimer = window.setTimeout(() => {
+    hudDismissTimer = undefined;
+    if (!activeCount()) {
+      recentTerminal = null;
+      renderHud();
+    }
+  }, terminal.status === "failed" ? 4200 : 2400);
+}
+
 async function refresh() {
   try {
-    cachedJobs = await operationJobs();
+    const next = await operationJobs();
+    noteTransitions(next);
+    cachedJobs = next;
     updateSidebar();
     renderPanel();
+    renderHud();
   } catch {
     // Tauri can briefly be unavailable during hot reload.
   }
 }
 
 export function installOperationQueue() {
-  observer = new MutationObserver(ensureSidebarButton);
+  observer = new MutationObserver(() => {
+    ensureSidebarButton();
+    ensureHud();
+  });
   observer.observe(document.body, { childList: true, subtree: true });
   ensureSidebarButton();
+  ensureHud();
   void refresh();
-  pollTimer = window.setInterval(() => void refresh(), 750);
+  pollTimer = window.setInterval(() => void refresh(), 600);
   return () => {
     observer?.disconnect();
     observer = null;
     if (pollTimer !== undefined) window.clearInterval(pollTimer);
     pollTimer = undefined;
+    if (hudDismissTimer !== undefined) window.clearTimeout(hudDismissTimer);
+    hudDismissTimer = undefined;
     closePanel();
+    hud?.remove();
+    hud = null;
+    previousStatuses.clear();
+    seededStatuses = false;
+    recentTerminal = null;
   };
 }

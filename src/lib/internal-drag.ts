@@ -1,4 +1,4 @@
-import { moveEntries } from "./fs";
+import { copyEntries, moveEntries } from "./fs";
 
 interface DragCandidate {
   startX: number;
@@ -7,13 +7,29 @@ interface DragCandidate {
   label: string;
 }
 
+interface DropDestination {
+  path: string;
+  label: string;
+  element: HTMLElement;
+  valid: boolean;
+  portal: boolean;
+  springRow: HTMLElement | null;
+}
+
 const DRAG_THRESHOLD = 6;
+const SPRING_DELAY_MS = 720;
+const isMac = /mac|iphone|ipad|ipod/i.test(navigator.platform || navigator.userAgent);
+
 let candidate: DragCandidate | null = null;
 let dragging = false;
-let destination: string | null = null;
-let dropTarget: HTMLElement | null = null;
+let currentDestination: DropDestination | null = null;
 let ghost: HTMLDivElement | null = null;
 let suppressClick = false;
+let copyMode = false;
+let springTimer: number | undefined;
+let springPath: string | null = null;
+let springRow: HTMLElement | null = null;
+const springOpened = new Set<string>();
 
 function rowFromTarget(target: EventTarget | null) {
   if (!(target instanceof Element)) return null;
@@ -22,21 +38,71 @@ function rowFromTarget(target: EventTarget | null) {
 
 function rowPath(row: HTMLElement | null) {
   if (!row) return null;
-  return row.dataset.entryPath ?? (row as any).dataset.portalPath ?? null;
+  return row.dataset.entryPath ?? row.dataset.portalPath ?? null;
 }
 
 function selectedPaths(row: HTMLElement) {
   const pane = row.closest<HTMLElement>(".explorer-pane");
-  if (!pane) return [];
+  if (!pane) return [] as string[];
   return [...pane.querySelectorAll<HTMLElement>(".pane-file-row.selected")]
-    .map((candidate) => candidate.dataset.entryPath)
+    .map((item) => item.dataset.entryPath)
     .filter((path): path is string => !!path);
 }
 
-function clearDropTarget() {
-  dropTarget?.classList.remove("internal-drop-target");
-  dropTarget = null;
-  destination = null;
+function comparablePath(path: string) {
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  return /^[a-zA-Z]:/.test(normalized) ? normalized.toLowerCase() : normalized || "/";
+}
+
+function parentDirectory(path: string) {
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  const index = normalized.lastIndexOf("/");
+  if (index < 0) return normalized;
+  if (index === 0) return "/";
+  if (index === 2 && /^[a-zA-Z]:/.test(normalized)) return normalized.slice(0, 3);
+  return normalized.slice(0, index);
+}
+
+function pathWithin(root: string, value: string) {
+  const a = comparablePath(root);
+  const b = comparablePath(value);
+  return a === b || b.startsWith(a === "/" ? "/" : `${a}/`);
+}
+
+function basename(path: string) {
+  return path.replace(/[\\/]+$/, "").split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+}
+
+function copyModifier(event: PointerEvent) {
+  return isMac ? event.altKey : event.ctrlKey;
+}
+
+function toast(message: string, error = false) {
+  window.dispatchEvent(new CustomEvent("scout:toast", { detail: { message, error } }));
+}
+
+function removeDestinationClasses(element: HTMLElement | null) {
+  element?.classList.remove(
+    "internal-drop-target",
+    "internal-drop-valid",
+    "internal-drop-invalid",
+    "internal-drop-copy",
+  );
+  element?.removeAttribute("data-drop-intent");
+}
+
+function clearSpring() {
+  if (springTimer !== undefined) window.clearTimeout(springTimer);
+  springTimer = undefined;
+  springRow?.classList.remove("internal-drop-spring");
+  springRow = null;
+  springPath = null;
+}
+
+function clearDestination() {
+  removeDestinationClasses(currentDestination?.element ?? null);
+  currentDestination = null;
+  clearSpring();
 }
 
 function removeGhost() {
@@ -45,81 +111,194 @@ function removeGhost() {
 }
 
 function endVisualDrag() {
-  clearDropTarget();
+  clearDestination();
   removeGhost();
-  document.documentElement.classList.remove("internal-file-drag");
+  document.documentElement.classList.remove("internal-file-drag", "internal-file-drag-copy");
   dragging = false;
+  copyMode = false;
+  springOpened.clear();
 }
 
 function ensureGhost() {
   if (ghost || !candidate) return;
   ghost = document.createElement("div");
-  ghost.className = "internal-drag-ghost";
-  ghost.textContent = candidate.paths.length === 1 ? candidate.label : `${candidate.paths.length} items`;
+  ghost.className = "internal-drag-ghost ux2-drag-ghost";
+  ghost.setAttribute("role", "status");
+  const action = document.createElement("span");
+  action.className = "ux2-drag-action";
+  const label = document.createElement("span");
+  label.className = "ux2-drag-label";
+  ghost.append(action, label);
   document.body.appendChild(ghost);
+}
+
+function updateGhostText() {
+  if (!candidate || !ghost) return;
+  const action = ghost.querySelector<HTMLElement>(".ux2-drag-action");
+  const label = ghost.querySelector<HTMLElement>(".ux2-drag-label");
+  if (!action || !label) return;
+
+  if (currentDestination?.portal) {
+    action.textContent = "Add";
+    label.textContent = candidate.paths.length === 1 ? candidate.label : `${candidate.paths.length} items`;
+    return;
+  }
+
+  action.textContent = copyMode ? "Copy" : "Move";
+  const subject = candidate.paths.length === 1 ? candidate.label : `${candidate.paths.length} items`;
+  label.textContent = currentDestination
+    ? `${subject} → ${currentDestination.label}`
+    : subject;
 }
 
 function positionGhost(x: number, y: number) {
   ensureGhost();
+  updateGhostText();
   if (ghost) ghost.style.transform = `translate3d(${x + 14}px, ${y + 14}px, 0)`;
 }
 
-function updateDestination(x: number, y: number) {
-  if (!candidate) return;
-  clearDropTarget();
+function destinationIsValid(path: string) {
+  if (!candidate) return false;
+  if (candidate.paths.some((source) => pathWithin(source, path))) return false;
+  if (!copyMode && candidate.paths.every((source) => comparablePath(parentDirectory(source)) === comparablePath(path))) {
+    return false;
+  }
+  return true;
+}
 
+function resolveDestination(x: number, y: number): DropDestination | null {
+  if (!candidate) return null;
   const hit = document.elementFromPoint(x, y);
-  const targetRow = hit?.closest<HTMLElement>(".pane-file-row") ?? null;
-  const targetPath = rowPath(targetRow);
-  const targetKind = targetRow?.dataset.entryKind;
+  if (!hit) return null;
 
-  // Check for Portal drop
-  const portalPanel = hit?.closest<HTMLElement>(".portal-panel, .portal-body");
+  const portalPanel = hit.closest<HTMLElement>(".portal-panel, .portal-body");
   if (portalPanel) {
-    destination = "__portal__";
-    dropTarget = portalPanel as HTMLElement;
-    dropTarget.classList.add("internal-drop-target");
+    return {
+      path: "__portal__",
+      label: "Portal",
+      element: portalPanel,
+      valid: true,
+      portal: true,
+      springRow: null,
+    };
+  }
+
+  const targetRow = hit.closest<HTMLElement>(".pane-file-row");
+  const targetPath = rowPath(targetRow);
+  if (
+    targetRow
+    && targetPath
+    && targetRow.dataset.entryKind === "directory"
+    && !candidate.paths.includes(targetPath)
+  ) {
+    return {
+      path: targetPath,
+      label: targetRow.dataset.entryName ?? basename(targetPath),
+      element: targetRow,
+      valid: destinationIsValid(targetPath),
+      portal: false,
+      springRow: targetRow,
+    };
+  }
+
+  const pane = hit.closest<HTMLElement>(".explorer-pane");
+  if (!pane) return null;
+  const path = pane.dataset.panePath;
+  const area = pane.querySelector<HTMLElement>(".file-area");
+  if (!path || !area) return null;
+  return {
+    path,
+    label: basename(path),
+    element: area,
+    valid: destinationIsValid(path),
+    portal: false,
+    springRow: null,
+  };
+}
+
+function scheduleSpring(destination: DropDestination) {
+  if (!destination.valid || !destination.springRow || destination.portal || springOpened.has(destination.path)) return;
+  springPath = destination.path;
+  springRow = destination.springRow;
+  springRow.classList.add("internal-drop-spring");
+  springTimer = window.setTimeout(() => {
+    springTimer = undefined;
+    const row = springRow;
+    const path = springPath;
+    if (!dragging || !row || !path || currentDestination?.path !== path || !row.isConnected) {
+      clearSpring();
+      return;
+    }
+    springOpened.add(path);
+    row.classList.remove("internal-drop-spring");
+    springRow = null;
+    springPath = null;
+    row.dispatchEvent(new MouseEvent("dblclick", {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX: row.getBoundingClientRect().left + 8,
+      clientY: row.getBoundingClientRect().top + 8,
+    }));
+  }, SPRING_DELAY_MS);
+}
+
+function applyDestination(next: DropDestination | null) {
+  const previous = currentDestination;
+  const sameSpringTarget = previous?.path === next?.path && previous?.springRow === next?.springRow;
+
+  removeDestinationClasses(previous?.element ?? null);
+  currentDestination = next;
+
+  if (!sameSpringTarget) clearSpring();
+  if (!next) {
+    updateGhostText();
     return;
   }
 
-  if (targetRow && targetPath && targetKind === "directory" && !candidate.paths.includes(targetPath)) {
-    destination = targetPath;
-    dropTarget = targetRow;
-  } else {
-    const pane = hit?.closest<HTMLElement>(".explorer-pane") ?? document.querySelector<HTMLElement>(".explorer-pane.active");
-    destination = pane?.dataset.panePath ?? null;
-    dropTarget = pane?.querySelector<HTMLElement>(".file-area") ?? null;
-  }
+  next.element.classList.add("internal-drop-target", next.valid ? "internal-drop-valid" : "internal-drop-invalid");
+  if (copyMode && !next.portal && next.valid) next.element.classList.add("internal-drop-copy");
+  next.element.dataset.dropIntent = next.portal ? "Add to Portal" : next.valid
+    ? `${copyMode ? "Copy" : "Move"} to ${next.label}`
+    : "Not available";
 
-  dropTarget?.classList.add("internal-drop-target");
+  if (!sameSpringTarget) scheduleSpring(next);
+  updateGhostText();
+}
+
+function updateDestination(event: PointerEvent) {
+  if (!candidate) return;
+  const nextCopyMode = copyModifier(event);
+  if (nextCopyMode !== copyMode) {
+    copyMode = nextCopyMode;
+    document.documentElement.classList.toggle("internal-file-drag-copy", copyMode);
+  }
+  applyDestination(resolveDestination(event.clientX, event.clientY));
 }
 
 function handlePointerDown(event: PointerEvent) {
   if (event.button !== 0) return;
   if (event.target instanceof Element && event.target.closest("input, button, .tab-close, .rename-input")) {
-    // Allow portal remove button, but not drag
-    if (!(event.target instanceof Element && event.target.closest(".portal-row"))) return;
+    if (!event.target.closest(".portal-row")) return;
   }
 
   const row = rowFromTarget(event.target);
   const path = rowPath(row);
   if (!row || !path) return;
 
-  // Ensure the entire row is draggable - add class to prevent text selection
   row.style.userSelect = "none";
-  // For portal rows, use single path; for pane rows, use selection
-  let paths: string[];
-  if (row.classList.contains("portal-row")) {
-    paths = [path];
-  } else {
-    const selected = selectedPaths(row);
-    paths = selected.includes(path) ? selected : [path];
-  }
+  const paths = row.classList.contains("portal-row")
+    ? [path]
+    : (() => {
+      const selected = selectedPaths(row);
+      return selected.includes(path) ? selected : [path];
+    })();
+
   candidate = {
     startX: event.clientX,
     startY: event.clientY,
     paths,
-    label: row.dataset.entryName ?? (row as any).dataset.portalPath ?? path,
+    label: row.dataset.entryName ?? row.dataset.portalPath ?? basename(path),
   };
 }
 
@@ -130,48 +309,69 @@ function handlePointerMove(event: PointerEvent) {
     const distance = Math.hypot(event.clientX - candidate.startX, event.clientY - candidate.startY);
     if (distance < DRAG_THRESHOLD) return;
     dragging = true;
+    copyMode = copyModifier(event);
     document.documentElement.classList.add("internal-file-drag");
+    document.documentElement.classList.toggle("internal-file-drag-copy", copyMode);
   }
 
   event.preventDefault();
   positionGhost(event.clientX, event.clientY);
-  updateDestination(event.clientX, event.clientY);
+  updateDestination(event);
+}
+
+async function performDrop(paths: string[], target: DropDestination, shouldCopy: boolean) {
+  if (target.portal) {
+    try {
+      const key = "scout:portal:v1";
+      const existing = JSON.parse(localStorage.getItem(key) ?? "[]") as unknown;
+      const set = new Set<string>(Array.isArray(existing) ? existing.filter((item): item is string => typeof item === "string") : []);
+      for (const path of paths) set.add(path);
+      localStorage.setItem(key, JSON.stringify([...set]));
+      window.dispatchEvent(new CustomEvent("scout:portal-updated"));
+      document.body.dispatchEvent(new CustomEvent("scout:reconcile-portal"));
+      toast(`Added ${paths.length === 1 ? "item" : `${paths.length} items`} to Portal`);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), true);
+    }
+    return;
+  }
+
+  try {
+    if (shouldCopy) await copyEntries(paths, target.path);
+    else await moveEntries(paths, target.path);
+    const count = paths.length === 1 ? "1 item" : `${paths.length} items`;
+    toast(`${shouldCopy ? "Copied" : "Moved"} ${count} to ${target.label}`);
+    window.dispatchEvent(new CustomEvent("scout:ux-files-mutated", {
+      detail: { kind: shouldCopy ? "copy" : "move", paths, destination: target.path },
+    }));
+  } catch (error) {
+    console.error("Scout could not complete dragged file operation", error);
+    toast(error instanceof Error ? error.message : String(error), true);
+  }
 }
 
 function handlePointerUp() {
   if (!candidate) return;
   const paths = candidate.paths;
-  const target = destination;
+  const target = currentDestination;
   const completedDrag = dragging;
+  const shouldCopy = copyMode;
 
-  // Reset userSelect
-  document.querySelectorAll<HTMLElement>(".pane-file-row").forEach((r) => (r.style.userSelect = ""));
+  document.querySelectorAll<HTMLElement>(".pane-file-row, .portal-row").forEach((row) => {
+    row.style.userSelect = "";
+  });
   candidate = null;
   endVisualDrag();
 
   if (!completedDrag) return;
   suppressClick = true;
-  window.setTimeout(() => {
-    suppressClick = false;
-  }, 80);
+  window.setTimeout(() => { suppressClick = false; }, 100);
 
-  if (!target) return;
-  if (target === "__portal__") {
-    try {
-      const key = "scout:portal:v1";
-      const existing = JSON.parse(localStorage.getItem(key) ?? "[]");
-      const set = new Set<string>(Array.isArray(existing) ? existing : []);
-      for (const p of paths) set.add(p);
-      localStorage.setItem(key, JSON.stringify([...set]));
-      window.dispatchEvent(new CustomEvent("scout:portal-updated"));
-      // Force portal to reconcile via temporary DOM change
-      document.body.dispatchEvent(new CustomEvent("scout:reconcile-portal"));
-    } catch {}
+  if (!target || !target.valid) {
+    if (target && !target.valid) toast("That item cannot be dropped there", true);
     return;
   }
-  void moveEntries(paths, target).catch((error) => {
-    console.error("Scout could not move dragged files", error);
-  });
+  void performDrop(paths, target, shouldCopy);
 }
 
 function handlePointerCancel() {

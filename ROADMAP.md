@@ -90,3 +90,25 @@ M4's implementation baseline is complete. External converter features are enable
 M5's implementation baseline is complete. Streaming and external-process jobs support in-loop or process-level cancellation. PDF mutations are queued around Scout's existing local lopdf operations.
 
 Native Trash is intentionally excluded from undo until Scout can restore trashed items reliably across macOS, Windows, and Linux.
+
+## UX & Interaction
+
+### UX 1 — Selection and navigation
+
+- [x] Consistent selection semantics across List, Icons, Gallery, and Columns
+- [x] Shift-range and spatial keyboard navigation
+- [x] Home/End and filename type-ahead
+- [x] Platform-aware open/rename shortcuts
+- [x] Selection restoration after same-folder mutations
+- [x] Focus and accessibility semantics
+
+### UX 2 — Direct manipulation and feedback
+
+- [x] Explicit Move/Copy drag intent with destination feedback
+- [x] Invalid/no-op/recursive drop protection
+- [x] Spring-loaded folders while dragging
+- [x] Direct tab drag/reordering with visible-order close behavior
+- [x] Compact live Operations HUD with progress and terminal states
+- [x] Immediate Undo/Redo affordance backed by persistent Footprints history
+
+UX 2 deliberately reuses Scout's existing filesystem, Operations, and Footprints backends. It is a direct-manipulation and feedback layer, not a second operation system.
