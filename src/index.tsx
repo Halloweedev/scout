@@ -75,6 +75,7 @@ import "./custom-actions.css";
 import "./git-integration.css";
 import "./git-ambient.css";
 import "./tab-scroll.css";
+import "./sidebar-scroll.css";
 
 const root = document.getElementById("root");
 
