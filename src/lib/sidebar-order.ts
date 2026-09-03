@@ -64,7 +64,13 @@ function rowsFor(kind: SidebarOrderKind) {
   const selector = kind === "bookmarks"
     ? ".sidebar .bookmark-list > .workspace-row"
     : ".sidebar .workspace-list:not(.bookmark-list) > .workspace-row";
-  return [...document.querySelectorAll<HTMLElement>(selector)].filter((row) => row.offsetParent !== null || !row.closest("[hidden]"));
+  // Include collapsed rows too. Stable IDs and order must be established even
+  // when Scout launches with a persisted collapsed section.
+  return [...document.querySelectorAll<HTMLElement>(selector)];
+}
+
+function visibleRowsFor(kind: SidebarOrderKind) {
+  return rowsFor(kind).filter((row) => row.offsetParent !== null);
 }
 
 function containerFor(kind: SidebarOrderKind) {
@@ -211,13 +217,25 @@ function handlePointerDown(event: PointerEvent) {
 
     const hit = document.elementFromPoint(move.clientX, move.clientY);
     const candidate = hit instanceof Element ? hit.closest<HTMLElement>(".scout-sidebar-order-row") : null;
-    if (!candidate || candidate === row || kindForRow(candidate) !== kind) {
-      hoverRow = null;
-    } else {
+    if (candidate && candidate !== row && kindForRow(candidate) === kind) {
       hoverRow = candidate;
       const rect = candidate.getBoundingClientRect();
       hoverAfter = move.clientY >= rect.top + rect.height / 2;
       candidate.classList.add(hoverAfter ? "scout-sidebar-order-after" : "scout-sidebar-order-before");
+    } else {
+      hoverRow = null;
+      const visible = visibleRowsFor(kind).filter((candidateRow) => candidateRow !== row);
+      const first = visible[0];
+      const last = visible.at(-1);
+      if (first && move.clientY < first.getBoundingClientRect().top) {
+        hoverRow = first;
+        hoverAfter = false;
+        first.classList.add("scout-sidebar-order-before");
+      } else if (last && move.clientY > last.getBoundingClientRect().bottom) {
+        hoverRow = last;
+        hoverAfter = true;
+        last.classList.add("scout-sidebar-order-after");
+      }
     }
 
     const sidebar = row.closest<HTMLElement>(".sidebar");
