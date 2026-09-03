@@ -40,6 +40,10 @@ function registryActions() {
   return new Map(availableActions(context).map((action) => [action.id, action]));
 }
 
+function hasParentBreadcrumb() {
+  return document.querySelectorAll(".toolbar .breadcrumb").length > 1;
+}
+
 function actionButton(action: ScoutAction, label = action.title, primary = false) {
   const button = create("button", `state-recovery-action${primary ? " primary" : ""}`);
   button.type = "button";
@@ -145,7 +149,7 @@ function renderError(area: HTMLElement) {
   const refresh = actionsById.get("navigation.refresh");
   const parent = actionsById.get("navigation.parent");
   if (refresh) actions.append(actionButton(refresh, "Retry", true));
-  if (parent) actions.append(actionButton(parent, "Go to Parent"));
+  if (parent && hasParentBreadcrumb()) actions.append(actionButton(parent, "Go to Parent"));
   banner.append(copy, actions);
   area.prepend(banner);
   return true;
