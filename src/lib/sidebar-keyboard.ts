@@ -1,3 +1,5 @@
+const isMac = /mac|iphone|ipad|ipod/i.test(navigator.platform || navigator.userAgent);
+
 let typeBuffer = "";
 let typeTimer: number | undefined;
 
@@ -76,12 +78,33 @@ function typeAhead(sidebar: HTMLElement, character: string) {
   return false;
 }
 
+function handleSidebarDelete(event: KeyboardEvent, target: Element) {
+  const row = target.closest<HTMLElement>(".scout-sidebar-order-row");
+  if (!row) return false;
+
+  const plainRemove = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
+    && (event.key === "Delete" || (isMac && event.key === "Backspace"));
+  const couldDeleteFiles = event.key === "Delete"
+    || (isMac && event.metaKey && !event.ctrlKey && !event.altKey && event.key === "Backspace");
+  if (!plainRemove && !couldDeleteFiles) return false;
+
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  clearTypeBuffer();
+
+  if (plainRemove) {
+    row.querySelector<HTMLButtonElement>(".workspace-delete")?.click();
+  }
+  return true;
+}
+
 function handleKeyDown(event: KeyboardEvent) {
   const target = event.target;
   if (!(target instanceof Element)) return;
   const sidebar = target.closest<HTMLElement>(".sidebar");
   if (!sidebar) return;
   if (target.closest("input, textarea, select, [contenteditable='true']")) return;
+  if (handleSidebarDelete(event, target)) return;
 
   // Alt+ArrowUp/Down belongs to the reorderable Bookmark/Workspace layer.
   // Yield here so normal sidebar focus traversal never races that action.
