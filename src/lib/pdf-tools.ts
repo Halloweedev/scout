@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { registerAction, type ScoutActionContext } from "./actions";
 import { enqueueAndWait } from "./operation-queue";
 
 interface PdfMetadataEntry {
@@ -18,7 +19,6 @@ interface PdfOperationResult {
   pages: number;
 }
 
-let observer: MutationObserver | null = null;
 let overlay: HTMLDivElement | null = null;
 let toast: HTMLDivElement | null = null;
 
@@ -28,20 +28,10 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, className?: stri
   return node;
 }
 
-function selectedRows() {
-  return [...document.querySelectorAll<HTMLElement>(".explorer-pane.active .pane-file-row.selected")];
-}
-
-function selectedPdfPaths() {
-  const rows = selectedRows();
-  if (!rows.length || !rows.every((row) => row.dataset.entryKind === "file" && row.dataset.entryExtension?.toLowerCase() === "pdf")) {
-    return [];
-  }
-  return rows.map((row) => row.dataset.entryPath).filter((path): path is string => !!path);
-}
-
-function activeDirectory() {
-  return document.querySelector<HTMLElement>(".explorer-pane.active")?.dataset.panePath ?? null;
+function pdfPaths(context: ScoutActionContext) {
+  if (!context.panePath || !context.selection.length) return [];
+  if (!context.selection.every((entry) => entry.kind === "file" && entry.extension?.toLowerCase() === "pdf")) return [];
+  return context.selectedPaths;
 }
 
 function closeOverlay() {
@@ -316,10 +306,8 @@ function openMultiPdf(paths: string[], destination: string) {
   body.append(intro, list, actions);
 }
 
-function openPdfTools() {
-  const paths = selectedPdfPaths();
-  const destination = activeDirectory();
-  if (!paths.length || !destination) {
+function openPdfTools(paths: string[], destination: string) {
+  if (!paths.length) {
     showToast("Select one or more PDF files", true);
     return;
   }
@@ -327,36 +315,24 @@ function openPdfTools() {
   else openMultiPdf(paths, destination);
 }
 
-function menuButton(label: string, action: () => void) {
-  const node = element("button");
-  node.type = "button";
-  node.textContent = label;
-  node.addEventListener("click", (event) => {
-    event.stopPropagation();
-    action();
-    document.querySelector<HTMLElement>(".context-menu")?.remove();
-  });
-  return node;
-}
-
-function enhanceContextMenu(menu: HTMLElement) {
-  if (menu.dataset.pdfToolsEnhanced === "1") return;
-  menu.dataset.pdfToolsEnhanced = "1";
-  if (!selectedPdfPaths().length) return;
-  const separator = element("div", "menu-separator pdf-menu-separator");
-  menu.append(separator, menuButton("PDF Tools…", openPdfTools));
-}
-
-function reconcileMenus() {
-  document.querySelectorAll<HTMLElement>(".context-menu").forEach(enhanceContextMenu);
-}
-
 export function installPdfTools() {
-  observer = new MutationObserver(reconcileMenus);
-  observer.observe(document.body, { childList: true, subtree: true });
+  const unregister = registerAction({
+    id: "tools.pdf",
+    title: "PDF Tools…",
+    category: "Tools",
+    keywords: ["pdf", "merge", "split", "compress", "rotate", "metadata", "pages"],
+    contextMenu: true,
+    contextMenuOrder: 123,
+    available: (context) => pdfPaths(context).length > 0,
+    run: (context) => {
+      const paths = pdfPaths(context);
+      if (!paths.length || !context.panePath) throw new Error("Select one or more PDF files");
+      openPdfTools(paths, context.panePath);
+    },
+  });
+
   return () => {
-    observer?.disconnect();
-    observer = null;
+    unregister();
     closeOverlay();
     toast?.remove();
     toast = null;
