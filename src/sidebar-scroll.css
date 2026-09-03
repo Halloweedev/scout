@@ -1,0 +1,24 @@
+.sidebar {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;
+}
+
+.sidebar::-webkit-scrollbar {
+  display: none;
+}
+
+.sidebar-drag-region {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  background: #0f0f10;
+}
+
+.brand-row {
+  position: sticky;
+  top: 36px;
+  z-index: 11;
+  background: #0f0f10;
+}
