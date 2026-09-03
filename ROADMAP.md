@@ -174,3 +174,17 @@ UX 2 deliberately reuses Scout's existing filesystem, Operations, and Footprints
 - [x] Context menus clamp to the visible viewport and become internally scrollable instead of rendering off-screen
 
 UX 3 makes Scout's navigation chrome scale with real-world use and brings pointer and keyboard interaction closer to parity without creating alternate command systems.
+
+### UX 4 — Desktop efficiency and data density
+
+- [x] Persisted resizable Name / Modified / Size columns in List view
+- [x] Pointer and keyboard List-column resizing with sensible min/max widths and reset behavior
+- [x] Keyboard-sortable List headers while preserving the existing pointer sort behavior
+- [x] Context-menu printable-character type-ahead over the existing visible menu actions
+- [x] Empty folder space exposes folder-level context actions without requiring a selected file
+- [x] Folder-background menus reuse the shared Actions Registry for compatible power tools instead of duplicating commands
+- [x] Tab strip exposes tablist/tab semantics with roving focus and Arrow Left/Right + Home/End activation
+- [x] Conflict-free platform tab-cycle aliases: Cmd+Shift+[ / ] on macOS and Ctrl+PageUp/PageDown on Windows/Linux
+- [x] Preserve Cmd/Ctrl+1 through Cmd/Ctrl+4 for Icons / List / Columns / Gallery instead of stealing them for numbered tabs
+
+UX 4 improves high-frequency desktop file-manager work without adding new backend systems: data density remains configurable, empty-space actions converge on the registry, and keyboard parity does not override established Scout shortcuts.
