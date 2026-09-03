@@ -1,3 +1,4 @@
+import { registerAction, type ScoutActionContext } from "./actions";
 import { cancelOperation, enqueueAndWait } from "./operation-queue";
 
 interface DuplicateGroup {
@@ -15,7 +16,6 @@ interface DuplicateScan {
   groups: DuplicateGroup[];
 }
 
-let observer: MutationObserver | null = null;
 let overlay: HTMLDivElement | null = null;
 let activeJob: number | null = null;
 
@@ -37,16 +37,9 @@ function formatBytes(value: number) {
   return `${size < 10 ? size.toFixed(1) : Math.round(size)} ${units[unit]}`;
 }
 
-function selectedRows() {
-  return [...document.querySelectorAll<HTMLElement>(".explorer-pane.active .pane-file-row.selected")];
-}
-
-function scanRoot() {
-  const rows = selectedRows();
-  if (rows.length === 1 && rows[0].dataset.entryKind === "directory") {
-    return rows[0].dataset.entryPath ?? null;
-  }
-  return document.querySelector<HTMLElement>(".explorer-pane.active")?.dataset.panePath ?? null;
+function scanRoot(context: ScoutActionContext) {
+  if (context.selection.length === 1 && context.selection[0].kind === "directory") return context.selection[0].path;
+  return context.panePath;
 }
 
 function close() {
@@ -132,9 +125,7 @@ function renderScan(body: HTMLElement, scan: DuplicateScan) {
   body.replaceChildren(summary, groups);
 }
 
-async function openDuplicateFinder() {
-  const root = scanRoot();
-  if (!root) return;
+async function openDuplicateFinder(root: string) {
   const body = createSheet();
 
   const controls = element("div", "duplicate-controls");
@@ -201,31 +192,24 @@ async function openDuplicateFinder() {
   scan.addEventListener("click", () => void run());
 }
 
-function enhanceMenu(menu: HTMLElement) {
-  if (menu.dataset.duplicatesEnhanced === "1") return;
-  menu.dataset.duplicatesEnhanced = "1";
-  const separator = element("div", "menu-separator duplicate-menu-separator");
-  const button = element("button");
-  button.type = "button";
-  button.textContent = "Find Duplicates…";
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    menu.remove();
-    void openDuplicateFinder();
-  });
-  menu.append(separator, button);
-}
-
-function reconcile() {
-  for (const menu of document.querySelectorAll<HTMLElement>(".context-menu")) enhanceMenu(menu);
-}
-
 export function installDuplicateFinder() {
-  observer = new MutationObserver(reconcile);
-  observer.observe(document.body, { childList: true, subtree: true });
+  const unregister = registerAction({
+    id: "tools.find-duplicates",
+    title: "Find Duplicates…",
+    category: "Tools",
+    keywords: ["duplicates", "duplicate finder", "disk", "cleanup", "hash"],
+    contextMenu: true,
+    contextMenuOrder: 130,
+    available: (context) => !!scanRoot(context),
+    run: async (context) => {
+      const root = scanRoot(context);
+      if (!root) throw new Error("No folder is available to scan for duplicates");
+      await openDuplicateFinder(root);
+    },
+  });
+
   return () => {
-    observer?.disconnect();
-    observer = null;
+    unregister();
     close();
   };
 }
