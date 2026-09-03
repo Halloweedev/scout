@@ -159,3 +159,18 @@ M7's implementation baseline is complete. Scout is intentionally developer-aware
 - [x] Immediate Undo/Redo affordance backed by persistent Footprints history
 
 UX 2 deliberately reuses Scout's existing filesystem, Operations, and Footprints backends. It is a direct-manipulation and feedback layer, not a second operation system.
+
+### UX 3 — Navigation chrome and accessibility
+
+- [x] Overflow-safe horizontally scrollable tab strip with active-tab auto-reveal and drag-edge scrolling
+- [x] Scrollable sidebar for large bookmark/workspace/location sets with drag-edge scrolling
+- [x] Persisted resizable sidebar with keyboard adjustment and double-click reset
+- [x] Persisted draggable splitters for 2–4 pane layouts with keyboard adjustment and 50/50 reset
+- [x] Deep breadcrumb paths scroll horizontally, auto-reveal the current folder, and edge-scroll during internal drags
+- [x] Current-folder Search uses progressive Escape: clear filter first, then leave the field
+- [x] Quick Look follows spatial selection in all four arrow directions
+- [x] Shift+F10 / Context Menu key opens the current selection's Scout context menu
+- [x] Context menus expose menu/menuitem semantics and keyboard navigation with Arrow Up/Down, Home/End, Tab cycling, Enter/Space, and Escape
+- [x] Context menus clamp to the visible viewport and become internally scrollable instead of rendering off-screen
+
+UX 3 makes Scout's navigation chrome scale with real-world use and brings pointer and keyboard interaction closer to parity without creating alternate command systems.
