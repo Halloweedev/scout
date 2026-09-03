@@ -33,6 +33,7 @@ import { installQolPack3 } from "./lib/qol-pack3";
 import { installQuickLook } from "./lib/quick-look";
 import { installSearchInteractions } from "./lib/search-interactions";
 import { installSidebarDropTargets } from "./lib/sidebar-drop-targets";
+import { installSidebarResize } from "./lib/sidebar-resize";
 import { installSimilarPhotos } from "./lib/similar-photos";
 import { installSmartExtract } from "./lib/smart-extract";
 import { installTabDrag } from "./lib/tab-drag";
@@ -77,6 +78,7 @@ import "./git-integration.css";
 import "./git-ambient.css";
 import "./tab-scroll.css";
 import "./sidebar-scroll.css";
+import "./sidebar-resize.css";
 
 const root = document.getElementById("root");
 
@@ -99,6 +101,7 @@ const mouseNavigationCleanup = installMouseNavigation();
 const navigationGesturesCleanup = installNavigationGestures();
 const platformNavigationShortcutsCleanup = installPlatformNavigationShortcuts();
 const searchInteractionsCleanup = installSearchInteractions();
+const sidebarResizeCleanup = installSidebarResize();
 const sidebarDropTargetsCleanup = installSidebarDropTargets();
 const tabDropTargetsCleanup = installTabDropTargets();
 const tabKeyboardNavigationCleanup = installTabKeyboardNavigation();
@@ -161,6 +164,7 @@ if (import.meta.hot) {
     automationLiveCleanup();
     tabDropTargetsCleanup();
     sidebarDropTargetsCleanup();
+    sidebarResizeCleanup();
     searchInteractionsCleanup();
     platformNavigationShortcutsCleanup();
     navigationGesturesCleanup();
