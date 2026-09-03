@@ -207,3 +207,16 @@ UX 4 improves high-frequency desktop file-manager work without adding new backen
 - [x] Saved List sorting restores safely across folder navigation, view changes, and opposite-direction same-column states
 
 UX 5 focuses on keeping Scout arranged the way the user left it. Sidebar organization, ordering, naming, visibility, keyboard traversal, view choice, and List sorting all reuse persistent UI state rather than adding backend concepts or duplicate preference stores.
+
+### UX 6 — Navigation memory and continuity
+
+- [x] Returning to a previously visited folder in Icons, List, or Gallery restores surviving selected items
+- [x] Back/forward and tab/folder navigation restore the remembered scroll position for that folder and view
+- [x] Pointer and keyboard interactions capture the current folder state before navigation can replace the active listing
+- [x] Icons, List, Columns, and Gallery keep independent in-session scroll/selection memory per folder
+- [x] Miller Columns restore their horizontal scroller without synthetic row selection that could accidentally navigate
+- [x] Explicit selection changes and clears replace the remembered state; missing/deleted remembered items are ignored safely
+- [x] Navigation memory is session-only and bounded to the 180 most recently touched folder/view states
+- [x] HMR cleanup removes listeners, observers, timers, and cached state cleanly
+
+UX 6 makes returning somewhere feel continuous instead of freshly reset. It is intentionally an in-session UI-memory layer: filesystem state remains authoritative, stale item paths are never recreated, and Miller Columns keep their native path-driven navigation semantics.
