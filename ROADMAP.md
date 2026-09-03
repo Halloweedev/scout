@@ -132,6 +132,7 @@ M7's implementation baseline is complete. Scout is intentionally developer-aware
 - [x] Home/End and filename type-ahead
 - [x] Platform-aware open/rename shortcuts
 - [x] Mouse back/forward buttons mapped to Scout pane history
+- [x] Native Alt+Left/Right pane-history navigation on Windows and Linux
 - [x] Selection restoration after same-folder mutations
 - [x] Focus and accessibility semantics
 
@@ -141,7 +142,10 @@ M7's implementation baseline is complete. Scout is intentionally developer-aware
 - [x] Invalid/no-op/recursive drop protection
 - [x] Spring-loaded folders while dragging
 - [x] Breadcrumb ancestors as direct Move/Copy drop destinations
+- [x] Places, writable Locations, and Bookmarks as direct Move/Copy sidebar destinations
+- [x] Native Trash semantics when dropping items onto the Trash sidebar target
 - [x] Direct tab drag/reordering with visible-order close behavior
+- [x] Middle-click tab closing
 - [x] Compact live Operations HUD with progress and terminal states
 - [x] Immediate Undo/Redo affordance backed by persistent Footprints history
 
