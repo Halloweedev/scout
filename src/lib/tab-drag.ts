@@ -66,6 +66,14 @@ function prepareActiveClose(tab: HTMLElement) {
   if (neighbor) neighbor.click();
 }
 
+function closeTabElement(tab: HTMLElement) {
+  const close = tab.querySelector<HTMLElement>(".tab-close");
+  if (!close) return false;
+  prepareActiveClose(tab);
+  close.click();
+  return true;
+}
+
 function endDrag() {
   if (dragging) {
     dragging.classList.remove("ux-tab-dragging");
@@ -143,6 +151,15 @@ function handlePointerCancel() {
   endDrag();
 }
 
+function handleAuxClick(event: MouseEvent) {
+  if (event.button !== 1) return;
+  const tab = tabFromTarget(event.target);
+  if (!tab) return;
+  if (!closeTabElement(tab)) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+
 function handleClickCapture(event: MouseEvent) {
   const target = event.target instanceof Element ? event.target : null;
   const close = target?.closest<HTMLElement>(".tab-close");
@@ -168,12 +185,10 @@ function handleKeyDown(event: KeyboardEvent) {
   const tabs = tabsInDom();
   if (tabs.length <= 1) return;
   const active = tabs.find((tab) => tab.classList.contains("active"));
-  const close = active?.querySelector<HTMLElement>(".tab-close");
-  if (!active || !close) return;
+  if (!active) return;
+  if (!closeTabElement(active)) return;
   event.preventDefault();
   event.stopImmediatePropagation();
-  prepareActiveClose(active);
-  close.click();
 }
 
 function installAccessibility() {
@@ -195,6 +210,7 @@ export function installTabDrag() {
   window.addEventListener("pointermove", handlePointerMove, { passive: false });
   window.addEventListener("pointerup", handlePointerUp);
   window.addEventListener("pointercancel", handlePointerCancel);
+  document.addEventListener("auxclick", handleAuxClick, true);
   document.addEventListener("click", handleClickCapture, true);
   window.addEventListener("keydown", handleKeyDown, true);
   queueMicrotask(reconcile);
@@ -206,6 +222,7 @@ export function installTabDrag() {
     window.removeEventListener("pointermove", handlePointerMove);
     window.removeEventListener("pointerup", handlePointerUp);
     window.removeEventListener("pointercancel", handlePointerCancel);
+    document.removeEventListener("auxclick", handleAuxClick, true);
     document.removeEventListener("click", handleClickCapture, true);
     window.removeEventListener("keydown", handleKeyDown, true);
     orderedTabs = [];
