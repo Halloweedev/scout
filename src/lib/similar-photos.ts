@@ -1,3 +1,4 @@
+import { registerAction, type ScoutActionContext } from "./actions";
 import { openEntry } from "./fs";
 import { cancelOperation, enqueueAndWait } from "./operation-queue";
 import { thumbnailEntry } from "./preview";
@@ -20,7 +21,6 @@ interface SimilarPhotoScan {
   groups: SimilarPhotoGroup[];
 }
 
-let observer: MutationObserver | null = null;
 let overlay: HTMLDivElement | null = null;
 let scanToken = 0;
 let activeJob: number | null = null;
@@ -31,10 +31,9 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, className?: stri
   return node;
 }
 
-function scanRoot() {
-  const rows = [...document.querySelectorAll<HTMLElement>(".explorer-pane.active .pane-file-row.selected")];
-  if (rows.length === 1 && rows[0].dataset.entryKind === "directory") return rows[0].dataset.entryPath ?? null;
-  return document.querySelector<HTMLElement>(".explorer-pane.active")?.dataset.panePath ?? null;
+function scanRoot(context: ScoutActionContext) {
+  if (context.selection.length === 1 && context.selection[0].kind === "directory") return context.selection[0].path;
+  return context.panePath;
 }
 
 function close() {
@@ -149,9 +148,7 @@ async function runScan(
   }
 }
 
-function openSimilarPhotos() {
-  const root = scanRoot();
-  if (!root) return;
+function openSimilarPhotos(root: string) {
   close();
 
   overlay = element("div", "similar-backdrop");
@@ -207,31 +204,24 @@ function openSimilarPhotos() {
   void runScan(root, Number(sensitivity.value), body, runButton, cancelButton);
 }
 
-function enhanceMenu(menu: HTMLElement) {
-  if (menu.dataset.similarPhotosEnhanced === "1") return;
-  menu.dataset.similarPhotosEnhanced = "1";
-  const separator = element("div", "menu-separator similar-menu-separator");
-  const button = element("button");
-  button.type = "button";
-  button.textContent = "Find Similar Photos…";
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    menu.remove();
-    openSimilarPhotos();
-  });
-  menu.append(separator, button);
-}
-
-function reconcile() {
-  for (const menu of document.querySelectorAll<HTMLElement>(".context-menu")) enhanceMenu(menu);
-}
-
 export function installSimilarPhotos() {
-  observer = new MutationObserver(reconcile);
-  observer.observe(document.body, { childList: true, subtree: true });
+  const unregister = registerAction({
+    id: "tools.find-similar-photos",
+    title: "Find Similar Photos…",
+    category: "Tools",
+    keywords: ["similar photos", "images", "near duplicate", "visual", "cleanup"],
+    contextMenu: true,
+    contextMenuOrder: 131,
+    available: (context) => !!scanRoot(context),
+    run: (context) => {
+      const root = scanRoot(context);
+      if (!root) throw new Error("No folder is available to scan for similar photos");
+      openSimilarPhotos(root);
+    },
+  });
+
   return () => {
-    observer?.disconnect();
-    observer = null;
+    unregister();
     close();
   };
 }
