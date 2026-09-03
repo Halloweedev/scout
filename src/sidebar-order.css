@@ -1,0 +1,53 @@
+.sidebar .scout-sidebar-order-row {
+  position: relative;
+}
+
+.sidebar .scout-sidebar-order-row > .workspace-open {
+  cursor: grab;
+}
+
+.sidebar .scout-sidebar-order-row > .workspace-open:active {
+  cursor: grabbing;
+}
+
+body.scout-sidebar-order-active,
+body.scout-sidebar-order-active * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+.sidebar .scout-sidebar-order-row.scout-sidebar-order-dragging {
+  opacity: 0.48;
+}
+
+.sidebar .scout-sidebar-order-row.scout-sidebar-order-before::before,
+.sidebar .scout-sidebar-order-row.scout-sidebar-order-after::after {
+  content: "";
+  position: absolute;
+  z-index: 8;
+  left: 8px;
+  right: 8px;
+  height: 1px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+}
+
+.sidebar .scout-sidebar-order-row.scout-sidebar-order-before::before {
+  top: -2px;
+}
+
+.sidebar .scout-sidebar-order-row.scout-sidebar-order-after::after {
+  bottom: -2px;
+}
+
+.sidebar .scout-sidebar-order-row:focus-within > .workspace-open {
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sidebar .scout-sidebar-order-row {
+    transition: opacity 90ms ease;
+  }
+}
