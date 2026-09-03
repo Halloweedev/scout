@@ -43,7 +43,6 @@ let observer: MutationObserver | null = null;
 let syncQueued = false;
 let lastSignature = "";
 let stopActionsChanged: (() => void) | null = null;
-let menuContext: ScoutActionContext | null = null;
 
 function create<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string) {
   const node = document.createElement(tag);
@@ -152,9 +151,9 @@ function ensureBar() {
 }
 
 function closeMenu() {
+  bar?.querySelector<HTMLButtonElement>(".contextual-action-more")?.setAttribute("aria-expanded", "false");
   menu?.remove();
   menu = null;
-  menuContext = null;
 }
 
 function menuButtons() {
@@ -188,9 +187,8 @@ function openMenu(anchor: HTMLElement, context: ScoutActionContext, actions: Sco
   closeMenu();
   const node = create("div", "contextual-action-menu glass-surface");
   node.setAttribute("role", "menu");
-  node.setAttribute("aria-label", "Available selection actions");
+  node.setAttribute("aria-label", actions.length ? "More selection actions" : "Selection commands");
   menu = node;
-  menuContext = context;
 
   let previousCategory: ScoutActionCategory | null = null;
   for (const action of actions) {
@@ -256,16 +254,15 @@ function renderBar(context: ScoutActionContext) {
   more.type = "button";
   more.textContent = overflowActions.length ? `More · ${overflowActions.length}` : "More";
   more.setAttribute("aria-haspopup", "menu");
-  more.setAttribute("aria-expanded", menu ? "true" : "false");
+  more.setAttribute("aria-expanded", "false");
   more.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
     if (menu) {
       closeMenu();
-      more.setAttribute("aria-expanded", "false");
       return;
     }
-    openMenu(more, context, actions);
+    openMenu(more, context, overflowActions);
     more.setAttribute("aria-expanded", "true");
   });
 
