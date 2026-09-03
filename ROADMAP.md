@@ -118,6 +118,7 @@ M6's implementation baseline is complete. Scout's power features now converge on
 - [x] Explicit-confirmation discard for tracked working-tree changes
 - [x] Git commands exposed through the shared Actions Registry and Command Palette
 - [x] Git subprocesses invoked directly with argument arrays rather than shell command strings
+- [x] Ambient Git state in every file view with direct-file markers, nested-change folder hints, and pane-level branch/change context
 
 M7's implementation baseline is complete. Scout is intentionally developer-aware rather than a full Git client: commit authoring, history visualization, remotes, pull requests, and hosting-service workflows remain outside this baseline.
 
