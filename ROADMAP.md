@@ -108,6 +108,19 @@ Native Trash is intentionally excluded from undo until Scout can restore trashed
 
 M6's implementation baseline is complete. Scout's power features now converge on the Actions Registry and shared Operations system instead of adding isolated command surfaces or unbounded background work.
 
+## M7 — Developer-aware files
+
+- [x] Detect the Git repository for the active folder or selected item without changing normal non-Git navigation
+- [x] Read branch, upstream, ahead/behind, staged, modified, untracked, and conflict state
+- [x] Git Status panel with repository summary and changed-file list
+- [x] Working-tree and staged diff inspection inside Scout
+- [x] Stage and unstage individual or discovered changes
+- [x] Explicit-confirmation discard for tracked working-tree changes
+- [x] Git commands exposed through the shared Actions Registry and Command Palette
+- [x] Git subprocesses invoked directly with argument arrays rather than shell command strings
+
+M7's implementation baseline is complete. Scout is intentionally developer-aware rather than a full Git client: commit authoring, history visualization, remotes, pull requests, and hosting-service workflows remain outside this baseline.
+
 ## UX & Interaction
 
 ### UX 1 — Selection and navigation
