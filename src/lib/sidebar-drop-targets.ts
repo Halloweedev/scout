@@ -17,6 +17,7 @@ interface SpecialDirectories {
 
 let observer: MutationObserver | null = null;
 let locations = new Map<string, string>();
+let trashPath = "";
 let disposed = false;
 
 function basename(path: string) {
@@ -44,9 +45,8 @@ function locationMap(dirs: SpecialDirectories) {
   addUnique(candidates, "iCloud Drive", dirs.icloud);
   addUnique(candidates, "Applications", dirs.applications);
 
-  // Trash and virtual Network locations deliberately stay out of generic Move/Copy drops.
-  // Trash must preserve Scout's native-trash semantics, and virtual network roots are not
-  // guaranteed to be writable filesystem destinations on every platform.
+  // Virtual Network roots deliberately stay out of generic Move/Copy drops because
+  // they are not guaranteed to be writable filesystem destinations on every platform.
   const normalizedHome = dirs.home.replace(/\\/g, "/");
   const windowsDrive = /^([a-zA-Z]:)\//.exec(normalizedHome)?.[1] ?? null;
   const rootPath = windowsDrive ? `${windowsDrive}\\` : "/";
@@ -62,11 +62,16 @@ function buttonLabel(button: HTMLElement) {
   return button.querySelector("span")?.textContent?.trim() ?? button.textContent?.trim() ?? "";
 }
 
+function clearTarget(button: HTMLElement) {
+  delete button.dataset.scoutDropPath;
+  delete button.dataset.scoutDropLabel;
+  delete button.dataset.scoutDropAction;
+}
+
 function decorate() {
   if (disposed) return;
   for (const button of document.querySelectorAll<HTMLElement>(".sidebar-item")) {
-    delete button.dataset.scoutDropPath;
-    delete button.dataset.scoutDropLabel;
+    clearTarget(button);
 
     if (button.closest(".bookmark-row")) {
       const path = button.getAttribute("title")?.trim();
@@ -78,6 +83,13 @@ function decorate() {
 
     if (button.classList.contains("workspace-open")) continue;
     const label = buttonLabel(button);
+    if (label === "Trash" && trashPath) {
+      button.dataset.scoutDropPath = trashPath;
+      button.dataset.scoutDropLabel = "Trash";
+      button.dataset.scoutDropAction = "trash";
+      continue;
+    }
+
     const path = locations.get(label);
     if (!path) continue;
     button.dataset.scoutDropPath = path;
@@ -95,10 +107,12 @@ export function installSidebarDropTargets() {
     .then((dirs) => {
       if (disposed) return;
       locations = locationMap(dirs);
+      trashPath = dirs.trash ?? "";
       decorate();
     })
     .catch(() => {
       locations = new Map();
+      trashPath = "";
     });
 
   observer = new MutationObserver(scheduleDecorate);
@@ -109,9 +123,7 @@ export function installSidebarDropTargets() {
     observer?.disconnect();
     observer = null;
     locations.clear();
-    document.querySelectorAll<HTMLElement>("[data-scout-drop-path]").forEach((node) => {
-      delete node.dataset.scoutDropPath;
-      delete node.dataset.scoutDropLabel;
-    });
+    trashPath = "";
+    document.querySelectorAll<HTMLElement>("[data-scout-drop-path], [data-scout-drop-action]").forEach(clearTarget);
   };
 }
