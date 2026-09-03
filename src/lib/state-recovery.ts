@@ -110,8 +110,8 @@ function renderEmptyState(area: HTMLElement) {
     detail.textContent = `Nothing here matches “${query}”.`;
     actions.append(simpleButton("Clear Filter", clearFilter, true));
 
-    const deepSearch = registryActions().get("navigation.deep-search");
-    if (deepSearch) actions.append(actionButton(deepSearch, "Search Everywhere"));
+    const globalSearch = registryActions().get("navigation.global-search");
+    if (globalSearch) actions.append(actionButton(globalSearch, "Search Everywhere"));
   } else {
     eyebrow.textContent = "Folder";
     title.textContent = "Empty folder";
