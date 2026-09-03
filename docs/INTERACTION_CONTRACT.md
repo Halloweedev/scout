@@ -37,7 +37,7 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Ctrl+Tab and Ctrl+Shift+Tab cycle tabs in visual order.
 - macOS also supports Cmd+Shift+[ and Cmd+Shift+] for previous/next tab; Windows/Linux support Ctrl+PageUp and Ctrl+PageDown.
 - Scout preserves Cmd/Ctrl+1 through Cmd/Ctrl+4 for Icons, List, Columns, and Gallery view switching instead of overloading those shortcuts for numbered tabs.
-- Windows/Linux Alt+Left and Alt+Right navigate pane history; Alt+Up navigates to the parent folder.
+- Windows/Linux Alt+Left and Alt+Right navigate pane history; Alt+Up navigates to the parent folder unless focus is inside a reorderable Bookmark or Workspace row, where Alt+Up belongs to sidebar reordering.
 
 ## Focus and accessibility
 
@@ -71,8 +71,14 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Bookmarks and Workspaces can be reordered directly with a pointer drag; insertion feedback shows the resulting position and edge-hovering scrolls long sidebars.
 - Bookmark and Workspace order persists by stable item ID across launches, additions, removals, and collapsed-section startup states.
 - Alt+Arrow Up/Down reorders the focused Bookmark or Workspace while ordinary unmodified Arrow Up/Down remains reserved for sidebar focus traversal.
+- On Windows/Linux, the normal Alt+Up parent-folder alias yields only while focus is inside one of those reorderable rows.
 - A reorder does not commit when the gesture is cancelled, released back over the source without a destination, or produces no actual order change.
 - A completed reorder suppresses the incidental click that would otherwise open the dragged Bookmark or Workspace on pointer release.
+- F2 on a focused Bookmark or Workspace opens a compact inline label editor without changing the folder path or saved pane layout.
+- Enter or blur commits a custom label; Escape cancels the current edit and restores the prior visible label.
+- Empty/custom labels equal to the underlying default fall back to the authoritative Bookmark or Workspace name instead of storing redundant aliases.
+- Custom sidebar labels are presentation aliases stored by stable item ID; the existing Bookmark and Workspace records remain authoritative for paths, pane layouts, creation, and deletion.
+- Aliases survive relaunch and ordinary additions/removals, and stale aliases are discarded when their stable item no longer exists.
 - Sidebar visibility is persistent and available through the shared `Toggle Sidebar` action.
 - macOS uses Control+Cmd+S for Toggle Sidebar; Windows/Linux use Ctrl+Shift+B.
 - Hiding the sidebar moves focus back into the active explorer when focus was inside the sidebar, and showing it preserves the previously configured width and disclosure state.
@@ -170,4 +176,4 @@ UX & Interaction 3.0 adds scalable navigation chrome: overflow-safe tabs/sidebar
 
 UX & Interaction 4.0 adds dense daily-driver controls without new backend systems: persisted resizable List columns, keyboard-sortable headers, registry-backed folder-background actions, menu type-ahead, and complete tab-strip keyboard semantics with conflict-free platform shortcuts.
 
-UX & Interaction 5.0 adds persistent workspace organization: collapsible and keyboard-traversable sidebar sections, persisted Bookmark/Workspace ordering, persistent sidebar visibility, and per-folder List sorting integrated into the existing folder-view preference model.
+UX & Interaction 5.0 adds persistent workspace organization: collapsible and keyboard-traversable sidebar sections, persisted Bookmark/Workspace ordering and custom labels, persistent sidebar visibility, and per-folder List sorting integrated into the existing folder-view preference model.
