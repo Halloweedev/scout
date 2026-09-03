@@ -15,6 +15,8 @@ export interface ScoutActionContext {
   hasActiveTab: boolean;
 }
 
+export type ScoutActionResult = void | boolean | Promise<void | boolean>;
+
 export interface ScoutAction {
   id: string;
   title: string;
@@ -26,7 +28,7 @@ export interface ScoutAction {
   contextMenuOrder?: number;
   danger?: boolean;
   available?: (context: ScoutActionContext) => boolean;
-  run: (context: ScoutActionContext) => void | Promise<void>;
+  run: (context: ScoutActionContext) => ScoutActionResult;
 }
 
 const actions = new Map<string, ScoutAction>();
