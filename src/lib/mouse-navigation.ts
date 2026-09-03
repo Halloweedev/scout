@@ -41,7 +41,7 @@ function handleAuxClick(event: MouseEvent) {
 }
 
 function handleKeyDown(event: KeyboardEvent) {
-  if (isMac || !event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
+  if (isMac || isEditableTarget(event.target) || !event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
   if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
 
   event.preventDefault();
