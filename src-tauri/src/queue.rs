@@ -5,13 +5,39 @@ use std::{
     panic::{catch_unwind, AssertUnwindSafe},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex, MutexGuard,
+        Arc, Condvar, Mutex, MutexGuard,
     },
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Emitter, Manager, State};
 
 const MAX_HISTORY: usize = 100;
+const MAX_CONCURRENT_JOBS: usize = 3;
+const MAX_BACKGROUND_JOBS: usize = 1;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum JobPriority {
+    Foreground,
+    Background,
+}
+
+impl JobPriority {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Foreground => "foreground",
+            Self::Background => "background",
+        }
+    }
+}
+
+fn priority_for_kind(kind: &str) -> JobPriority {
+    match kind {
+        "duplicates" | "disk-map" | "similar-photos" | "file-health" | "index" | "automation" => {
+            JobPriority::Background
+        }
+        _ => JobPriority::Foreground,
+    }
+}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,6 +45,7 @@ pub struct OperationJob {
     id: u64,
     kind: String,
     label: String,
+    priority: String,
     status: String,
     progress: Option<f64>,
     detail: Option<String>,
@@ -35,9 +62,102 @@ struct QueueInner {
     jobs: VecDeque<OperationJob>,
 }
 
+#[derive(Default)]
+struct SchedulerInner {
+    foreground_waiters: VecDeque<u64>,
+    background_waiters: VecDeque<u64>,
+    active_total: usize,
+    active_background: usize,
+}
+
+#[derive(Default)]
+struct OperationScheduler {
+    inner: Mutex<SchedulerInner>,
+    wake: Condvar,
+}
+
+impl OperationScheduler {
+    fn register(&self, id: u64, priority: JobPriority) {
+        let mut inner = recover_lock(&self.inner);
+        match priority {
+            JobPriority::Foreground => inner.foreground_waiters.push_back(id),
+            JobPriority::Background => inner.background_waiters.push_back(id),
+        }
+        self.wake.notify_all();
+    }
+
+    fn acquire(&self, id: u64, priority: JobPriority, cancel: &AtomicBool) -> bool {
+        let mut inner = recover_lock(&self.inner);
+        loop {
+            if cancel.load(Ordering::Relaxed) {
+                Self::remove_waiter(&mut inner, id, priority);
+                self.wake.notify_all();
+                return false;
+            }
+
+            let is_front = match priority {
+                JobPriority::Foreground => inner.foreground_waiters.front().copied() == Some(id),
+                JobPriority::Background => inner.background_waiters.front().copied() == Some(id),
+            };
+            let has_capacity = inner.active_total < MAX_CONCURRENT_JOBS;
+            let priority_has_capacity = match priority {
+                JobPriority::Foreground => true,
+                JobPriority::Background => {
+                    inner.active_background < MAX_BACKGROUND_JOBS
+                        && inner.foreground_waiters.is_empty()
+                }
+            };
+
+            if is_front && has_capacity && priority_has_capacity {
+                match priority {
+                    JobPriority::Foreground => {
+                        inner.foreground_waiters.pop_front();
+                    }
+                    JobPriority::Background => {
+                        inner.background_waiters.pop_front();
+                        inner.active_background += 1;
+                    }
+                }
+                inner.active_total += 1;
+                return true;
+            }
+
+            let waited = self
+                .wake
+                .wait_timeout(inner, Duration::from_millis(100))
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            inner = waited.0;
+        }
+    }
+
+    fn release(&self, priority: JobPriority) {
+        let mut inner = recover_lock(&self.inner);
+        inner.active_total = inner.active_total.saturating_sub(1);
+        if priority == JobPriority::Background {
+            inner.active_background = inner.active_background.saturating_sub(1);
+        }
+        self.wake.notify_all();
+    }
+
+    fn notify(&self) {
+        self.wake.notify_all();
+    }
+
+    fn remove_waiter(inner: &mut SchedulerInner, id: u64, priority: JobPriority) {
+        let queue = match priority {
+            JobPriority::Foreground => &mut inner.foreground_waiters,
+            JobPriority::Background => &mut inner.background_waiters,
+        };
+        if let Some(index) = queue.iter().position(|candidate| *candidate == id) {
+            queue.remove(index);
+        }
+    }
+}
+
 pub struct OperationQueueState {
     inner: Mutex<QueueInner>,
     cancellations: Mutex<HashMap<u64, Arc<AtomicBool>>>,
+    scheduler: OperationScheduler,
 }
 
 impl Default for OperationQueueState {
@@ -48,6 +168,7 @@ impl Default for OperationQueueState {
                 jobs: VecDeque::new(),
             }),
             cancellations: Mutex::new(HashMap::new()),
+            scheduler: OperationScheduler::default(),
         }
     }
 }
@@ -74,7 +195,12 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
 }
 
 impl OperationQueueState {
-    fn create_job(&self, kind: String, label: String) -> (u64, Arc<AtomicBool>) {
+    fn create_job(
+        &self,
+        kind: String,
+        label: String,
+        priority: JobPriority,
+    ) -> (u64, Arc<AtomicBool>) {
         let cancel = Arc::new(AtomicBool::new(false));
         let mut inner = recover_lock(&self.inner);
         let id = inner.next_id;
@@ -83,6 +209,7 @@ impl OperationQueueState {
             id,
             kind,
             label,
+            priority: priority.as_str().to_string(),
             status: "queued".to_string(),
             progress: Some(0.0),
             detail: None,
@@ -98,6 +225,7 @@ impl OperationQueueState {
         }
         drop(inner);
         recover_lock(&self.cancellations).insert(id, cancel.clone());
+        self.scheduler.register(id, priority);
         (id, cancel)
     }
 
@@ -140,25 +268,37 @@ impl JobContext {
     }
 }
 
-pub fn enqueue_blocking<T, F>(app: AppHandle, kind: impl Into<String>, label: impl Into<String>, worker: F) -> u64
+pub fn enqueue_blocking<T, F>(
+    app: AppHandle,
+    kind: impl Into<String>,
+    label: impl Into<String>,
+    worker: F,
+) -> u64
 where
     T: Serialize + Send + 'static,
     F: FnOnce(JobContext) -> Result<T, String> + Send + 'static,
 {
+    let kind = kind.into();
+    let priority = priority_for_kind(&kind);
     let (id, cancel) = {
         let state = app.state::<OperationQueueState>();
-        state.create_job(kind.into(), label.into())
+        state.create_job(kind, label.into(), priority)
     };
     let app_for_task = app.clone();
 
     tauri::async_runtime::spawn_blocking(move || {
-        if cancel.load(Ordering::Relaxed) {
+        let acquired = {
+            let state = app_for_task.state::<OperationQueueState>();
+            state.scheduler.acquire(id, priority, cancel.as_ref())
+        };
+
+        if !acquired {
             {
                 let state = app_for_task.state::<OperationQueueState>();
                 state.update(id, |job| {
                     job.status = "cancelled".to_string();
                     job.progress = None;
-                    job.detail = Some("Cancelled".to_string());
+                    job.detail = Some("Cancelled before starting".to_string());
                     job.finished_ms = Some(now_ms());
                 });
                 state.finish_cancel_tracking(id);
@@ -216,14 +356,15 @@ where
                         job.status = "failed".to_string();
                         job.progress = None;
                         job.detail = Some("The operation stopped unexpectedly".to_string());
-                        job.error = Some(format!("Operation panicked: {}", panic_message(payload.as_ref())));
+                        job.error = Some(format!(
+                            "Operation panicked: {}",
+                            panic_message(payload.as_ref())
+                        ));
                     }
                 }
             });
-        }
-        {
-            let state = app_for_task.state::<OperationQueueState>();
             state.finish_cancel_tracking(id);
+            state.scheduler.release(priority);
         }
         let _ = app_for_task.emit("scout-operation-queue", id);
     });
@@ -245,6 +386,7 @@ pub fn cancel_operation(id: u64, state: State<'_, OperationQueueState>) -> bool 
         state.update(id, |job| {
             job.detail = Some("Cancelling…".to_string());
         });
+        state.scheduler.notify();
         true
     } else {
         false
@@ -254,16 +396,39 @@ pub fn cancel_operation(id: u64, state: State<'_, OperationQueueState>) -> bool 
 #[tauri::command]
 pub fn clear_finished_operations(state: State<'_, OperationQueueState>) {
     let mut inner = recover_lock(&state.inner);
-    inner.jobs.retain(|job| job.status == "queued" || job.status == "running");
+    inner
+        .jobs
+        .retain(|job| job.status == "queued" || job.status == "running");
 }
 
 #[cfg(test)]
 mod tests {
-    use super::panic_message;
+    use super::{panic_message, priority_for_kind, JobPriority};
 
     #[test]
     fn formats_string_panic_payloads() {
         let message = "boom".to_string();
         assert_eq!(panic_message(&message), "boom");
+    }
+
+    #[test]
+    fn classifies_background_operation_kinds() {
+        for kind in [
+            "duplicates",
+            "disk-map",
+            "similar-photos",
+            "file-health",
+            "index",
+            "automation",
+        ] {
+            assert_eq!(priority_for_kind(kind), JobPriority::Background, "{kind}");
+        }
+    }
+
+    #[test]
+    fn keeps_direct_user_operations_foreground() {
+        for kind in ["archive", "checksum", "conversion", "image", "pdf", "custom-action"] {
+            assert_eq!(priority_for_kind(kind), JobPriority::Foreground, "{kind}");
+        }
     }
 }
