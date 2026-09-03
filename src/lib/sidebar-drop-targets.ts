@@ -43,9 +43,10 @@ function locationMap(dirs: SpecialDirectories) {
   addUnique(candidates, "Movies", dirs.movies);
   addUnique(candidates, "iCloud Drive", dirs.icloud);
   addUnique(candidates, "Applications", dirs.applications);
-  addUnique(candidates, "Network", dirs.network);
-  addUnique(candidates, "Trash", dirs.trash);
 
+  // Trash and virtual Network locations deliberately stay out of generic Move/Copy drops.
+  // Trash must preserve Scout's native-trash semantics, and virtual network roots are not
+  // guaranteed to be writable filesystem destinations on every platform.
   const normalizedHome = dirs.home.replace(/\\/g, "/");
   const windowsDrive = /^([a-zA-Z]:)\//.exec(normalizedHome)?.[1] ?? null;
   const rootPath = windowsDrive ? `${windowsDrive}\\` : "/";
@@ -58,8 +59,7 @@ function locationMap(dirs: SpecialDirectories) {
 }
 
 function buttonLabel(button: HTMLElement) {
-  const label = button.querySelector("span")?.textContent?.trim() ?? button.textContent?.trim() ?? "";
-  return label;
+  return button.querySelector("span")?.textContent?.trim() ?? button.textContent?.trim() ?? "";
 }
 
 function decorate() {
