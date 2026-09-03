@@ -1,0 +1,122 @@
+.git-ambient-badge {
+  display: inline-flex;
+  min-width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  margin-left: -3px;
+  padding: 0 3px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #77777d;
+  font-size: 8px;
+  font-weight: 760;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  pointer-events: none;
+  vertical-align: middle;
+}
+
+.git-ambient-badge[data-git-state="modified"],
+.git-ambient-badge[data-git-state="mixed"] { color: #a5a5aa; }
+.git-ambient-badge[data-git-state="staged"] { color: #8e8e94; }
+.git-ambient-badge[data-git-state="untracked"] { color: #86868c; }
+.git-ambient-badge[data-git-state="nested"] {
+  min-width: 11px;
+  padding: 0 2px;
+  border-color: transparent;
+  background: transparent;
+  color: #5f5f65;
+  font-size: 10px;
+}
+.git-ambient-badge[data-git-state="conflict"] {
+  border-color: rgba(255, 120, 120, 0.18);
+  background: rgba(255, 110, 110, 0.055);
+  color: #d99a9a;
+}
+
+.pane-file-row.grid,
+.pane-file-row.gallery { position: relative; }
+.pane-file-row.grid > .git-ambient-badge,
+.pane-file-row.gallery > .git-ambient-badge {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  margin: 0;
+  z-index: 2;
+  background: rgba(18, 18, 20, 0.86);
+  backdrop-filter: blur(8px);
+}
+
+.git-ambient-pane {
+  display: inline-flex;
+  min-width: 0;
+  max-width: min(42%, 260px);
+  height: 23px;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 5px;
+  margin-right: 5px;
+  padding: 0 7px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.025);
+  color: #74747a;
+  font: inherit;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.explorer-pane.active .git-ambient-pane {
+  border-color: rgba(255, 255, 255, 0.075);
+  background: rgba(255, 255, 255, 0.035);
+  color: #8a8a90;
+}
+
+.git-ambient-pane:hover {
+  border-color: rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.055);
+  color: #b7b7bc;
+}
+
+.git-ambient-prefix {
+  color: #525258;
+  font-size: 8px;
+  font-weight: 720;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.git-ambient-branch {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 580;
+  text-overflow: ellipsis;
+}
+
+.git-ambient-dirty {
+  display: inline-flex;
+  min-width: 15px;
+  height: 15px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #8f8f95;
+  font-size: 8px;
+  font-weight: 680;
+}
+
+.git-ambient-sync {
+  color: #66666c;
+  font-size: 8px;
+}
+
+@media (max-width: 820px) {
+  .git-ambient-pane { max-width: 150px; }
+  .git-ambient-prefix { display: none; }
+}
