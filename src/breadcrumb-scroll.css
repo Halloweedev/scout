@@ -1,0 +1,26 @@
+.path-display.breadcrumbs {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 0;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.path-display.breadcrumbs::-webkit-scrollbar {
+  display: none;
+}
+
+.path-display.breadcrumbs > .breadcrumb,
+.path-display.breadcrumbs > .breadcrumb-sep {
+  flex: 0 0 auto;
+}
+
+.path-display.breadcrumbs > input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
