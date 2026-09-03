@@ -16,6 +16,7 @@ mod qol;
 mod queue;
 mod scripts;
 mod search;
+mod search_v2;
 mod similar;
 mod tag_collections;
 mod tags;
@@ -94,6 +95,8 @@ pub fn run() {
             search::enqueue_index_rebuild,
             search::search_index,
             search::record_index_open,
+            search_v2::search_index_v2,
+            search_v2::deep_search,
             similar::find_similar_photos,
             similar::enqueue_similar_photo_scan,
             tag_collections::tag_collections,

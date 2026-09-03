@@ -12,7 +12,7 @@ TEMP_ROOT="${RUNNER_TEMP:-/tmp}/scout-runtime-smoke"
 FIXTURE_HOME="$TEMP_ROOT/home"
 LOG_PATH="${RUNNER_TEMP:-/tmp}/scout-runtime.log"
 SCREENSHOT_PATH="${RUNNER_TEMP:-/tmp}/scout-runtime-smoke.png"
-DISPLAY_NUMBER="${SCOUT_SMOKE_DISPLAY:-:99}"
+DISPLAY_NUMBER="${SCOUT_SMOKE_DISPLAY:-:98}"
 
 rm -rf "$TEMP_ROOT"
 mkdir -p "$FIXTURE_HOME/A-Folder/B-Folder" "$FIXTURE_HOME/Downloads" "$FIXTURE_HOME/Desktop"
@@ -32,15 +32,34 @@ cleanup() {
 }
 trap cleanup EXIT
 
-Xvfb "$DISPLAY_NUMBER" -screen 0 1400x900x24 -nolisten tcp >"$TEMP_ROOT/xvfb.log" 2>&1 &
-XVFB_PID=$!
+unset XAUTHORITY WAYLAND_DISPLAY
 export DISPLAY="$DISPLAY_NUMBER"
 export GDK_BACKEND=x11
 export HOME="$FIXTURE_HOME"
 export XDG_CONFIG_HOME="$FIXTURE_HOME/.config"
 export XDG_DATA_HOME="$FIXTURE_HOME/.local/share"
 export XDG_CACHE_HOME="$FIXTURE_HOME/.cache"
-mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
+export XDG_RUNTIME_DIR="$TEMP_ROOT/runtime"
+mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME" "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
+
+Xvfb "$DISPLAY_NUMBER" -screen 0 1400x900x24 -nolisten tcp -ac >"$TEMP_ROOT/xvfb.log" 2>&1 &
+XVFB_PID=$!
+DISPLAY_ID="${DISPLAY_NUMBER#:}"
+for _ in $(seq 1 50); do
+  if [[ -S "/tmp/.X11-unix/X${DISPLAY_ID}" ]]; then break; fi
+  if ! kill -0 "$XVFB_PID" 2>/dev/null; then
+    echo "Xvfb exited before the runtime smoke could start." >&2
+    cat "$TEMP_ROOT/xvfb.log" >&2 || true
+    exit 1
+  fi
+  sleep 0.2
+done
+if [[ ! -S "/tmp/.X11-unix/X${DISPLAY_ID}" ]]; then
+  echo "Xvfb did not expose display $DISPLAY_NUMBER." >&2
+  cat "$TEMP_ROOT/xvfb.log" >&2 || true
+  exit 1
+fi
 
 "$BINARY" >"$LOG_PATH" 2>&1 &
 SCOUT_PID=$!
@@ -66,10 +85,6 @@ fi
 xdotool windowsize "$WINDOW_ID" 1240 780 || true
 xdotool windowmove "$WINDOW_ID" 20 20 || true
 
-# Xvfb intentionally runs without a window manager. xdotool's `key --window`
-# path can transiently report X focus window 1 under WebKitGTK, even though
-# Scout is alive. Focus the X window directly and send ordinary keyboard
-# events, retrying instead of turning a focus race into a false app failure.
 focus_scout() {
   xdotool windowfocus --sync "$WINDOW_ID" >/dev/null 2>&1 || xdotool windowfocus "$WINDOW_ID" >/dev/null 2>&1 || true
   sleep 0.08
@@ -106,7 +121,6 @@ send_text() {
 focus_scout
 sleep 1
 
-# Global editable location entry must work even in a keyboard-first flow.
 send_key ctrl+l
 sleep 0.3
 send_text '~/A-Folder'
@@ -118,7 +132,6 @@ send_text '~'
 send_key Return
 sleep 0.8
 
-# Tabs must create and close without disturbing the current folder.
 send_key ctrl+t
 sleep 0.4
 send_key ctrl+w
@@ -130,14 +143,8 @@ if ! kill -0 "$SCOUT_PID" 2>/dev/null; then
   exit 1
 fi
 
-# Finder-compatible view shortcuts: 1 Icons, 2 List, 3 Columns, 4 Gallery.
 send_key ctrl+3
 sleep 1
-
-# Real Miller-column keyboard flow:
-# Down selects A-Folder and reveals its child column.
-# Right focuses the child column; Down selects B-Folder and reveals its child.
-# Right focuses that column; Down selects 01-preview.txt and opens the preview column.
 send_key Down
 sleep 0.7
 send_key Right
@@ -163,7 +170,6 @@ if [[ ! -s "$SCREENSHOT_PATH" ]]; then
   exit 1
 fi
 
-# Walk out and back into the current column after preview creation.
 send_key Left
 sleep 0.4
 send_key Right
