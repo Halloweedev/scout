@@ -35,6 +35,7 @@ import { installSimilarPhotos } from "./lib/similar-photos";
 import { installSmartExtract } from "./lib/smart-extract";
 import { installTabDrag } from "./lib/tab-drag";
 import { installTabDropTargets } from "./lib/tab-drop-targets";
+import { installTabKeyboardNavigation } from "./lib/tab-keyboard-navigation";
 import { installTagCollections } from "./lib/tag-collections";
 import { installTags } from "./lib/tags";
 import { installTerminalActions } from "./lib/terminal-actions";
@@ -93,6 +94,7 @@ const mouseNavigationCleanup = installMouseNavigation();
 const navigationGesturesCleanup = installNavigationGestures();
 const sidebarDropTargetsCleanup = installSidebarDropTargets();
 const tabDropTargetsCleanup = installTabDropTargets();
+const tabKeyboardNavigationCleanup = installTabKeyboardNavigation();
 const dragAutoscrollCleanup = installDragAutoscroll();
 const nativeDropCleanup = installNativeFileDrop();
 const internalDragCleanup = installInternalPointerDrag();
@@ -124,6 +126,7 @@ if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     internalDragCleanup();
     dragAutoscrollCleanup();
+    tabKeyboardNavigationCleanup();
     tabDragCleanup();
     quickLookCleanup();
     uxInteractionsCleanup();
