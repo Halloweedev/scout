@@ -1,3 +1,4 @@
+import { registerAction, type ScoutActionContext } from "./actions";
 import { cancelOperation, enqueueAndWait } from "./operation-queue";
 
 interface FolderSizeItem {
@@ -22,7 +23,6 @@ interface Rect {
   height: number;
 }
 
-let observer: MutationObserver | null = null;
 let overlay: HTMLDivElement | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let activeJob: number | null = null;
@@ -45,10 +45,9 @@ function formatBytes(value: number) {
   return `${size < 10 ? size.toFixed(1) : Math.round(size)} ${units[unit]}`;
 }
 
-function scanRoot() {
-  const rows = [...document.querySelectorAll<HTMLElement>(".explorer-pane.active .pane-file-row.selected")];
-  if (rows.length === 1 && rows[0].dataset.entryKind === "directory") return rows[0].dataset.entryPath ?? null;
-  return document.querySelector<HTMLElement>(".explorer-pane.active")?.dataset.panePath ?? null;
+function scanRoot(context: ScoutActionContext) {
+  if (context.selection.length === 1 && context.selection[0].kind === "directory") return context.selection[0].path;
+  return context.panePath;
 }
 
 function close() {
@@ -133,9 +132,7 @@ function renderMap(container: HTMLElement, items: FolderSizeItem[]) {
   }
 }
 
-async function openDiskMap() {
-  const root = scanRoot();
-  if (!root) return;
+async function openDiskMap(root: string) {
   close();
 
   overlay = element("div", "disk-map-backdrop");
@@ -207,31 +204,24 @@ async function openDiskMap() {
   }
 }
 
-function enhanceMenu(menu: HTMLElement) {
-  if (menu.dataset.diskMapEnhanced === "1") return;
-  menu.dataset.diskMapEnhanced = "1";
-  const separator = element("div", "menu-separator disk-map-menu-separator");
-  const button = element("button");
-  button.type = "button";
-  button.textContent = "Folder Size Map…";
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    menu.remove();
-    void openDiskMap();
-  });
-  menu.append(separator, button);
-}
-
-function reconcile() {
-  for (const menu of document.querySelectorAll<HTMLElement>(".context-menu")) enhanceMenu(menu);
-}
-
 export function installDiskMap() {
-  observer = new MutationObserver(reconcile);
-  observer.observe(document.body, { childList: true, subtree: true });
+  const unregister = registerAction({
+    id: "tools.folder-size-map",
+    title: "Folder Size Map…",
+    category: "Tools",
+    keywords: ["folder size", "disk map", "treemap", "storage", "largest files"],
+    contextMenu: true,
+    contextMenuOrder: 132,
+    available: (context) => !!scanRoot(context),
+    run: async (context) => {
+      const root = scanRoot(context);
+      if (!root) throw new Error("No folder is available to map");
+      await openDiskMap(root);
+    },
+  });
+
   return () => {
-    observer?.disconnect();
-    observer = null;
+    unregister();
     close();
   };
 }
