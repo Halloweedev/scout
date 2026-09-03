@@ -11,6 +11,7 @@ import { installDiskMap } from "./lib/disk-map";
 import { installDuplicateFinder } from "./lib/duplicates";
 import { installFileHealth } from "./lib/file-health";
 import { installFootprints } from "./lib/footprints";
+import { installGitIntegration } from "./lib/git-integration";
 import { installGlobalSearch } from "./lib/global-search";
 import { installImageThumbnails } from "./lib/thumbnails";
 import { installImageTools } from "./lib/image-tools";
@@ -62,6 +63,7 @@ import "./m6.css";
 import "./file-health.css";
 import "./tag-collections.css";
 import "./custom-actions.css";
+import "./git-integration.css";
 
 const root = document.getElementById("root");
 
@@ -78,6 +80,7 @@ const viewPreferencesCleanup = installViewPreferences();
 const commandPaletteCleanup = installCommandPalette();
 const inspectorCleanup = installInspector();
 const fileHealthCleanup = installFileHealth();
+const gitIntegrationCleanup = installGitIntegration();
 const nativeDropCleanup = installNativeFileDrop();
 const internalDragCleanup = installInternalPointerDrag();
 const tabDragCleanup = installTabDrag();
@@ -130,6 +133,7 @@ if (import.meta.hot) {
     operationQueueCleanup();
     automationCleanup();
     automationLiveCleanup();
+    gitIntegrationCleanup();
     fileHealthCleanup();
     inspectorCleanup();
     commandPaletteCleanup();
