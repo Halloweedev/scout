@@ -12,6 +12,12 @@ const LIMITS: Record<ColumnName, { min: number; max: number }> = {
 let observer: MutationObserver | null = null;
 let reconcileQueued = false;
 
+function columnLabel(column: ColumnName) {
+  if (column === "modified") return "Modified";
+  if (column === "size") return "Size";
+  return "Name";
+}
+
 function clamp(column: ColumnName, value: number) {
   const { min, max } = LIMITS[column];
   return Math.max(min, Math.min(max, Math.round(value)));
@@ -105,7 +111,7 @@ function makeHandle(header: HTMLElement, cell: HTMLElement, column: ColumnName) 
   handle.tabIndex = 0;
   handle.setAttribute("role", "separator");
   handle.setAttribute("aria-orientation", "vertical");
-  handle.setAttribute("aria-label", `Resize ${column === "modified" ? "Modified" : column === "size" ? "Size" : "Name"} column`);
+  handle.setAttribute("aria-label", `Resize ${columnLabel(column)} column`);
   handle.dataset.scoutListColumn = column;
   handle.title = "Drag to resize · Double-click to reset columns";
 
@@ -164,6 +170,7 @@ function makeHandle(header: HTMLElement, cell: HTMLElement, column: ColumnName) 
     }
     if (event.key === "Enter") {
       event.preventDefault();
+      event.stopPropagation();
       resetColumns();
       return;
     }
@@ -179,8 +186,23 @@ function makeHandle(header: HTMLElement, cell: HTMLElement, column: ColumnName) 
   cell.append(handle);
 }
 
+function updateSortSemantics(header: HTMLElement) {
+  const cells = [...header.children].filter((node): node is HTMLElement => node instanceof HTMLElement).slice(0, 3);
+  COLUMN_NAMES.forEach((column, index) => {
+    const cell = cells[index];
+    if (!cell) return;
+    const text = cell.textContent ?? "";
+    const direction = text.includes("∧") ? "ascending" : text.includes("∨") ? "descending" : null;
+    cell.setAttribute("aria-pressed", direction ? "true" : "false");
+    cell.setAttribute("aria-label", direction ? `Sort by ${columnLabel(column)}, ${direction}` : `Sort by ${columnLabel(column)}`);
+  });
+}
+
 function enhanceHeader(header: HTMLElement) {
-  if (header.dataset.scoutListColumns === "1") return;
+  if (header.dataset.scoutListColumns === "1") {
+    updateSortSemantics(header);
+    return;
+  }
   const area = areaFor(header);
   if (!area) return;
   const cells = [...header.children].filter((node): node is HTMLElement => node instanceof HTMLElement).slice(0, 3);
@@ -195,8 +217,21 @@ function enhanceHeader(header: HTMLElement) {
     const cell = cells[index];
     if (!cell) return;
     cell.classList.add("scout-list-column-header");
+    cell.tabIndex = 0;
+    cell.setAttribute("role", "button");
+    cell.dataset.scoutSortColumn = column;
+    cell.addEventListener("keydown", (event) => {
+      if (event.target !== cell) return;
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      event.stopPropagation();
+      cell.click();
+      queueMicrotask(() => updateSortSemantics(header));
+    });
+    cell.addEventListener("click", () => queueMicrotask(() => updateSortSemantics(header)));
     makeHandle(header, cell, column);
   });
+  updateSortSemantics(header);
 }
 
 function reconcile() {
@@ -224,7 +259,7 @@ function queueReconcile() {
 export function installListColumnResize() {
   reconcile();
   observer = new MutationObserver(queueReconcile);
-  observer.observe(document.body, { childList: true, subtree: true });
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
 
   return () => {
     observer?.disconnect();
@@ -238,7 +273,14 @@ export function installListColumnResize() {
     document.querySelectorAll(".scout-list-column-resizer").forEach((node) => node.remove());
     document.querySelectorAll<HTMLElement>(".file-header[data-scout-list-columns]").forEach((header) => {
       delete header.dataset.scoutListColumns;
-      header.querySelectorAll(".scout-list-column-header").forEach((cell) => cell.classList.remove("scout-list-column-header"));
+      header.querySelectorAll<HTMLElement>(".scout-list-column-header").forEach((cell) => {
+        cell.classList.remove("scout-list-column-header");
+        cell.removeAttribute("role");
+        cell.removeAttribute("tabindex");
+        cell.removeAttribute("aria-pressed");
+        cell.removeAttribute("aria-label");
+        delete cell.dataset.scoutSortColumn;
+      });
     });
   };
 }
