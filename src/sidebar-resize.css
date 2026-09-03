@@ -1,0 +1,42 @@
+:root {
+  --scout-sidebar-width: 220px;
+}
+
+.app-shell {
+  grid-template-columns: var(--scout-sidebar-width) minmax(0, 1fr) !important;
+}
+
+.sidebar-resize-handle {
+  position: fixed;
+  z-index: 60;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--scout-sidebar-width) - 3px);
+  width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.sidebar-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: transparent;
+  transition: background 100ms ease;
+}
+
+.sidebar-resize-handle:hover::after,
+.sidebar-resize-handle:focus-visible::after,
+.sidebar-resizing .sidebar-resize-handle::after {
+  background: rgba(255, 255, 255, 0.20);
+}
+
+.sidebar-resizing,
+.sidebar-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
