@@ -58,6 +58,12 @@
   background: rgba(255, 255, 255, 0.09) !important;
 }
 
+.sidebar-item[data-scout-drop-action="trash"].internal-drop-target.internal-drop-valid {
+  background: rgba(255, 105, 105, 0.065) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 120, 120, 0.16);
+  color: #e7b1b1;
+}
+
 .sidebar-item.internal-drop-target.internal-drop-invalid {
   opacity: 0.45;
   box-shadow: inset 0 0 0 1px rgba(255, 120, 120, 0.14);
