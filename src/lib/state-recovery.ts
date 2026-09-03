@@ -40,8 +40,8 @@ function registryActions() {
   return new Map(availableActions(context).map((action) => [action.id, action]));
 }
 
-function actionButton(action: ScoutAction, label = action.title) {
-  const button = create("button", "state-recovery-action");
+function actionButton(action: ScoutAction, label = action.title, primary = false) {
+  const button = create("button", `state-recovery-action${primary ? " primary" : ""}`);
   button.type = "button";
   button.textContent = label;
   if (action.shortcut) button.title = `${action.title} · ${action.shortcut}`;
@@ -125,35 +125,6 @@ function renderEmptyState(area: HTMLElement) {
   source.insertAdjacentElement("afterend", panel);
 }
 
-function retryActivePane() {
-  const target = activeArea() ?? window;
-  target.dispatchEvent(new KeyboardEvent("keydown", {
-    key: "F5",
-    code: "F5",
-    bubbles: true,
-    cancelable: true,
-  }));
-}
-
-function parentPath(path: string) {
-  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
-  if (!normalized || normalized === "/") return null;
-  if (/^[a-zA-Z]:$/.test(normalized)) return null;
-  const slash = normalized.lastIndexOf("/");
-  if (slash < 0) return null;
-  if (slash === 0) return "/";
-  const parent = normalized.slice(0, slash);
-  return path.includes("\\") ? parent.replace(/\//g, "\\") : parent;
-}
-
-function navigateParent() {
-  const path = activePane()?.dataset.panePath;
-  if (!path) return;
-  const parent = parentPath(path);
-  if (!parent) return;
-  window.dispatchEvent(new CustomEvent("scout:navigate", { detail: { path: parent } }));
-}
-
 function renderError(area: HTMLElement) {
   const status = document.querySelector<HTMLElement>(".statusbar .status-error");
   const message = status?.textContent?.trim();
@@ -170,9 +141,11 @@ function renderError(area: HTMLElement) {
   copy.append(title, detail);
 
   const actions = create("div", "state-recovery-error-actions");
-  actions.append(simpleButton("Retry", retryActivePane, true));
-  const path = activePane()?.dataset.panePath;
-  if (path && parentPath(path)) actions.append(simpleButton("Go to Parent", navigateParent));
+  const actionsById = registryActions();
+  const refresh = actionsById.get("navigation.refresh");
+  const parent = actionsById.get("navigation.parent");
+  if (refresh) actions.append(actionButton(refresh, "Retry", true));
+  if (parent) actions.append(actionButton(parent, "Go to Parent"));
   banner.append(copy, actions);
   area.prepend(banner);
   return true;
