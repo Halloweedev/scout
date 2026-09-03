@@ -208,6 +208,14 @@ function mutationsNeedReconcile(mutations: MutationRecord[]) {
   });
 }
 
+function handleInput(event: Event) {
+  if (!(event.target instanceof HTMLInputElement)) return;
+  if (event.target !== filterInput()) return;
+  // The filter value is a DOM property, not an observed attribute. Queue after
+  // the input event so Solid has applied the new query and no-match text first.
+  queueReconcile();
+}
+
 export function installStateRecovery() {
   observer = new MutationObserver((mutations) => {
     if (mutationsNeedReconcile(mutations)) queueReconcile();
@@ -219,6 +227,7 @@ export function installStateRecovery() {
     attributeFilter: ["class", "data-pane-path"],
   });
 
+  document.addEventListener("input", handleInput, true);
   window.addEventListener("scout:action-ran", queueReconcile);
   window.addEventListener("scout:navigate", queueReconcile);
   queueReconcile();
@@ -226,6 +235,7 @@ export function installStateRecovery() {
   return () => {
     observer?.disconnect();
     observer = null;
+    document.removeEventListener("input", handleInput, true);
     window.removeEventListener("scout:action-ran", queueReconcile);
     window.removeEventListener("scout:navigate", queueReconcile);
     if (loadingTimer !== undefined) window.clearTimeout(loadingTimer);

@@ -34,6 +34,16 @@ export interface ScoutAction {
 
 const actions = new Map<string, ScoutAction>();
 const listeners = new Set<() => void>();
+const CONTEXT_MENU_CATEGORY_ORDER: ScoutActionCategory[] = [
+  "File",
+  "Navigation",
+  "Tabs",
+  "Selection",
+  "Tools",
+  "Workspace",
+  "Developer",
+  "View",
+];
 let observer: MutationObserver | null = null;
 let reconcileQueued = false;
 
@@ -47,6 +57,11 @@ function rowEntry(row: HTMLElement): ScoutActionEntry | null {
     extension: row.dataset.entryExtension || null,
     gitState: row.dataset.gitState || undefined,
   };
+}
+
+function contextMenuCategoryRank(category: ScoutActionCategory) {
+  const index = CONTEXT_MENU_CATEGORY_ORDER.indexOf(category);
+  return index < 0 ? CONTEXT_MENU_CATEGORY_ORDER.length : index;
 }
 
 export function actionContext(): ScoutActionContext {
@@ -107,7 +122,9 @@ function enhanceContextMenu(menu: HTMLElement) {
   const context = actionContext();
   const contextual = availableActions(context)
     .filter((action) => action.contextMenu)
-    .sort((a, b) => (a.contextMenuOrder ?? 100) - (b.contextMenuOrder ?? 100) || a.title.localeCompare(b.title));
+    .sort((a, b) => contextMenuCategoryRank(a.category) - contextMenuCategoryRank(b.category)
+      || (a.contextMenuOrder ?? 100) - (b.contextMenuOrder ?? 100)
+      || a.title.localeCompare(b.title));
 
   menu.querySelectorAll("[data-scout-action-registry]").forEach((node) => node.remove());
   if (!contextual.length) return;
@@ -115,9 +132,21 @@ function enhanceContextMenu(menu: HTMLElement) {
   const separator = document.createElement("div");
   separator.className = "menu-separator";
   separator.dataset.scoutActionRegistry = "1";
+  separator.setAttribute("role", "separator");
   menu.append(separator);
 
+  let previousCategory: ScoutActionCategory | null = null;
   for (const action of contextual) {
+    if (action.category !== previousCategory) {
+      const heading = document.createElement("div");
+      heading.className = "contextual-action-menu-heading";
+      heading.dataset.scoutActionRegistry = "1";
+      heading.setAttribute("role", "presentation");
+      heading.textContent = action.category;
+      menu.append(heading);
+      previousCategory = action.category;
+    }
+
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.scoutActionRegistry = "1";
@@ -145,6 +174,9 @@ function enhanceContextMenu(menu: HTMLElement) {
 function reconcileMenus() {
   reconcileQueued = false;
   for (const menu of document.querySelectorAll<HTMLElement>(".context-menu")) enhanceContextMenu(menu);
+  // Rebuilding the registry-owned section mutates the observed menu. Discard
+  // those records so the registry doesn't schedule a second identical pass.
+  observer?.takeRecords();
 }
 
 function queueReconcile() {
