@@ -311,9 +311,24 @@ function activeFileSurfaceOwnsFocus(target: Element | null) {
   return !!area && !!pane?.classList.contains("active");
 }
 
+function toggleFromCommand(event: KeyboardEvent) {
+  if (!overlay && !selectedPath()) return false;
+  event.preventDefault();
+  event.stopPropagation();
+  if (overlay) close(); else open();
+  return true;
+}
+
 function handleKeyDown(event: KeyboardEvent) {
   const target = eventTarget(event);
   if (event.code === "Space") {
+    // Registry surfaces deliberately replay Space as an untrusted event. Keep
+    // that explicit command path working while trusted physical Space remains
+    // owned by whichever focused control the user is actually interacting with.
+    if (!event.isTrusted) {
+      toggleFromCommand(event);
+      return;
+    }
     if (overlay) {
       if (interactiveTarget(target)) return;
       event.preventDefault();
