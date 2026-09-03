@@ -73,6 +73,29 @@ function basename(path: string) {
   return path.replace(/[\\/]+$/, "").split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 }
 
+function breadcrumbPath(button: HTMLElement) {
+  const display = button.closest<HTMLElement>(".path-display.breadcrumbs");
+  const panePath = document.querySelector<HTMLElement>(".explorer-pane.active")?.dataset.panePath ?? display?.title ?? "";
+  if (!display || !panePath) return null;
+  const buttons = [...display.querySelectorAll<HTMLElement>(".breadcrumb")];
+  const index = buttons.indexOf(button);
+  if (index < 0) return null;
+
+  const normalized = panePath.replace(/\\/g, "/");
+  const parts = normalized.split("/").filter(Boolean);
+  if (index >= parts.length) return null;
+  const drive = /^[a-zA-Z]:/.exec(normalized)?.[0] ?? null;
+  const unc = panePath.startsWith("\\\\");
+  const unixAbsolute = !drive && !unc && normalized.startsWith("/");
+
+  if (drive) {
+    const rest = parts.slice(1, index + 1);
+    return rest.length ? `${drive}\\${rest.join("\\")}` : `${drive}\\`;
+  }
+  if (unc) return `\\\\${parts.slice(0, index + 1).join("\\")}`;
+  return `${unixAbsolute ? "/" : ""}${parts.slice(0, index + 1).join("/")}`;
+}
+
 function copyModifier(event: PointerEvent) {
   return isMac ? event.altKey : event.ctrlKey;
 }
@@ -179,6 +202,19 @@ function resolveDestination(x: number, y: number): DropDestination | null {
       element: portalPanel,
       valid: true,
       portal: true,
+      springRow: null,
+    };
+  }
+
+  const breadcrumb = hit.closest<HTMLElement>(".breadcrumb");
+  const breadcrumbDestination = breadcrumb ? breadcrumbPath(breadcrumb) : null;
+  if (breadcrumb && breadcrumbDestination) {
+    return {
+      path: breadcrumbDestination,
+      label: breadcrumb.textContent?.trim() || basename(breadcrumbDestination),
+      element: breadcrumb,
+      valid: destinationIsValid(breadcrumbDestination),
+      portal: false,
       springRow: null,
     };
   }
