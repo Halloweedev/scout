@@ -23,6 +23,7 @@ import { installMouseNavigation } from "./lib/mouse-navigation";
 import { installNativeFileDrop } from "./lib/native-drop";
 import { installNavigationGestures } from "./lib/navigation-gestures";
 import { installOperationQueue } from "./lib/operation-queue";
+import { installPaneResize } from "./lib/pane-resize";
 import { installPdfTools } from "./lib/pdf-tools";
 import { installPlatformNavigationShortcuts } from "./lib/platform-navigation-shortcuts";
 import { installPortal } from "./lib/portal";
@@ -79,6 +80,7 @@ import "./git-ambient.css";
 import "./tab-scroll.css";
 import "./sidebar-scroll.css";
 import "./sidebar-resize.css";
+import "./pane-resize.css";
 
 const root = document.getElementById("root");
 
@@ -103,6 +105,7 @@ const platformNavigationShortcutsCleanup = installPlatformNavigationShortcuts();
 const searchInteractionsCleanup = installSearchInteractions();
 const sidebarResizeCleanup = installSidebarResize();
 const sidebarDropTargetsCleanup = installSidebarDropTargets();
+const paneResizeCleanup = installPaneResize();
 const tabDropTargetsCleanup = installTabDropTargets();
 const tabKeyboardNavigationCleanup = installTabKeyboardNavigation();
 const tabScrollCleanup = installTabScroll();
@@ -162,6 +165,7 @@ if (import.meta.hot) {
     operationQueueCleanup();
     automationCleanup();
     automationLiveCleanup();
+    paneResizeCleanup();
     tabDropTargetsCleanup();
     sidebarDropTargetsCleanup();
     sidebarResizeCleanup();
