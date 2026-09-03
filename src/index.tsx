@@ -37,6 +37,7 @@ import { installSmartExtract } from "./lib/smart-extract";
 import { installTabDrag } from "./lib/tab-drag";
 import { installTabDropTargets } from "./lib/tab-drop-targets";
 import { installTabKeyboardNavigation } from "./lib/tab-keyboard-navigation";
+import { installTabScroll } from "./lib/tab-scroll";
 import { installTagCollections } from "./lib/tag-collections";
 import { installTags } from "./lib/tags";
 import { installTerminalActions } from "./lib/terminal-actions";
@@ -73,6 +74,7 @@ import "./tag-collections.css";
 import "./custom-actions.css";
 import "./git-integration.css";
 import "./git-ambient.css";
+import "./tab-scroll.css";
 
 const root = document.getElementById("root");
 
@@ -97,6 +99,7 @@ const platformNavigationShortcutsCleanup = installPlatformNavigationShortcuts();
 const sidebarDropTargetsCleanup = installSidebarDropTargets();
 const tabDropTargetsCleanup = installTabDropTargets();
 const tabKeyboardNavigationCleanup = installTabKeyboardNavigation();
+const tabScrollCleanup = installTabScroll();
 const dragAutoscrollCleanup = installDragAutoscroll();
 const nativeDropCleanup = installNativeFileDrop();
 const internalDragCleanup = installInternalPointerDrag();
@@ -128,6 +131,7 @@ if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     internalDragCleanup();
     dragAutoscrollCleanup();
+    tabScrollCleanup();
     tabKeyboardNavigationCleanup();
     tabDragCleanup();
     quickLookCleanup();
