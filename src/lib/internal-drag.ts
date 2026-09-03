@@ -206,6 +206,19 @@ function resolveDestination(x: number, y: number): DropDestination | null {
     };
   }
 
+  const sidebarTarget = hit.closest<HTMLElement>("[data-scout-drop-path]");
+  const sidebarPath = sidebarTarget?.dataset.scoutDropPath;
+  if (sidebarTarget && sidebarPath) {
+    return {
+      path: sidebarPath,
+      label: sidebarTarget.dataset.scoutDropLabel || basename(sidebarPath),
+      element: sidebarTarget,
+      valid: destinationIsValid(sidebarPath),
+      portal: false,
+      springRow: null,
+    };
+  }
+
   const breadcrumb = hit.closest<HTMLElement>(".breadcrumb");
   const breadcrumbDestination = breadcrumb ? breadcrumbPath(breadcrumb) : null;
   if (breadcrumb && breadcrumbDestination) {
