@@ -1,4 +1,4 @@
-export type ScoutActionCategory = "File" | "Navigation" | "Selection" | "Tabs" | "View" | "Tools" | "Workspace";
+export type ScoutActionCategory = "File" | "Navigation" | "Selection" | "Tabs" | "View" | "Tools" | "Workspace" | "Developer";
 
 export interface ScoutActionEntry {
   path: string;
