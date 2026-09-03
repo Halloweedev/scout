@@ -7,7 +7,6 @@ const MENU_LAYOUT: Array<string | "separator"> = [
   "separator",
   "navigation.copy-folder-path",
   "workspace.bookmark",
-  "tools.open-terminal",
 ];
 
 let menu: HTMLDivElement | null = null;
