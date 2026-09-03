@@ -148,7 +148,6 @@ async function activate(index = selectedIndex) {
   closeCommandPalette();
   try {
     await runAction(action.id, context);
-    recordRecent(action.id);
   } catch (error) {
     showToast(error instanceof Error ? error.message : String(error), true);
   }
@@ -253,10 +252,18 @@ function handleActionError(event: Event) {
   if (message) showToast(message, true);
 }
 
+function handleActionRan(event: Event) {
+  const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+  if (!id) return;
+  recordRecent(id);
+  if (overlay) renderResults();
+}
+
 export function installCommandPalette() {
   window.addEventListener("keydown", handleKeyDown, true);
   window.addEventListener("scout:toast", handleToast);
   window.addEventListener("scout:action-error", handleActionError);
+  window.addEventListener("scout:action-ran", handleActionRan);
   const stopRegistryListener = onActionsChanged(() => {
     if (overlay) renderResults();
   });
@@ -264,6 +271,7 @@ export function installCommandPalette() {
     window.removeEventListener("keydown", handleKeyDown, true);
     window.removeEventListener("scout:toast", handleToast);
     window.removeEventListener("scout:action-error", handleActionError);
+    window.removeEventListener("scout:action-ran", handleActionRan);
     stopRegistryListener();
     closeCommandPalette();
     if (toastTimer !== undefined) window.clearTimeout(toastTimer);
