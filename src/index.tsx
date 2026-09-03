@@ -21,6 +21,7 @@ import { installImageThumbnails } from "./lib/thumbnails";
 import { installImageTools } from "./lib/image-tools";
 import { installInspector } from "./lib/inspector";
 import { installInternalPointerDrag } from "./lib/internal-drag";
+import { installListColumnResize } from "./lib/list-column-resize";
 import { installMouseNavigation } from "./lib/mouse-navigation";
 import { installNativeFileDrop } from "./lib/native-drop";
 import { installNavigationGestures } from "./lib/navigation-gestures";
@@ -87,6 +88,7 @@ import "./sidebar-resize.css";
 import "./pane-resize.css";
 import "./breadcrumb-scroll.css";
 import "./context-menu-keyboard.css";
+import "./list-column-resize.css";
 
 const root = document.getElementById("root");
 
@@ -110,6 +112,7 @@ const mouseNavigationCleanup = installMouseNavigation();
 const navigationGesturesCleanup = installNavigationGestures();
 const navigationUx3Cleanup = installNavigationUx3();
 const breadcrumbScrollCleanup = installBreadcrumbScroll();
+const listColumnResizeCleanup = installListColumnResize();
 const platformNavigationShortcutsCleanup = installPlatformNavigationShortcuts();
 const searchInteractionsCleanup = installSearchInteractions();
 const sidebarResizeCleanup = installSidebarResize();
@@ -180,6 +183,7 @@ if (import.meta.hot) {
     sidebarResizeCleanup();
     searchInteractionsCleanup();
     platformNavigationShortcutsCleanup();
+    listColumnResizeCleanup();
     breadcrumbScrollCleanup();
     navigationUx3Cleanup();
     navigationGesturesCleanup();
