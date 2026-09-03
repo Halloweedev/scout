@@ -1,0 +1,31 @@
+.app-shell {
+  transition: grid-template-columns 140ms ease;
+}
+
+.app-shell.scout-sidebar-hidden {
+  grid-template-columns: 0 minmax(0, 1fr) !important;
+}
+
+.app-shell > .sidebar {
+  transition: opacity 110ms ease, transform 140ms ease, visibility 0s linear 0s;
+}
+
+.app-shell.scout-sidebar-hidden > .sidebar {
+  opacity: 0;
+  transform: translateX(-8px);
+  visibility: hidden;
+  pointer-events: none;
+  border-right-color: transparent;
+  transition: opacity 90ms ease, transform 120ms ease, visibility 0s linear 120ms;
+}
+
+.app-shell.scout-sidebar-hidden > .sidebar-resize-handle {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell,
+  .app-shell > .sidebar {
+    transition: none !important;
+  }
+}
