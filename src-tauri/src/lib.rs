@@ -19,6 +19,7 @@ mod scripts;
 mod search;
 mod search_v2;
 mod similar;
+mod smart_extract;
 mod tag_collections;
 mod tags;
 mod terminal;
@@ -102,6 +103,7 @@ pub fn run() {
             search_v2::deep_search,
             similar::find_similar_photos,
             similar::enqueue_similar_photo_scan,
+            smart_extract::enqueue_smart_zip_extraction,
             tag_collections::tag_collections,
             tag_collections::paths_for_tag,
             tags::tags_for_paths,
