@@ -1,0 +1,20 @@
+.tab-strip {
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+}
+
+.tab-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-strip > .tab,
+.tab-strip > .new-tab-button {
+  scroll-margin-inline: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-strip { scroll-behavior: auto; }
+}
