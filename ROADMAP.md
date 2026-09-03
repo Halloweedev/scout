@@ -197,7 +197,10 @@ UX 4 improves high-frequency desktop file-manager work without adding new backen
 - [x] Sidebar navigation supports Arrow Up/Down, Home/End, and printable-character type-ahead across visible destinations
 - [x] Sidebar visibility persists and is exposed through the shared Actions Registry
 - [x] Platform-aware Toggle Sidebar shortcuts: Control+Cmd+S on macOS and Ctrl+Shift+B on Windows/Linux
+- [x] Bookmarks and Workspaces support persisted pointer drag reordering with insertion feedback and sidebar edge autoscroll
+- [x] Focused Bookmarks and Workspaces support Alt+Arrow Up/Down reordering without colliding with ordinary sidebar focus traversal
+- [x] Cancelled, same-row, and no-destination reorder gestures remain no-ops instead of mutating order or activating the row
 - [x] Per-folder view preferences now include List sort column and direction
 - [x] Saved List sorting restores safely across folder navigation, view changes, and opposite-direction same-column states
 
-UX 5 focuses on keeping Scout arranged the way the user left it. Sidebar organization, visibility, keyboard traversal, view choice, and List sorting all reuse existing persistent UI state rather than adding backend concepts or duplicate preference stores.
+UX 5 focuses on keeping Scout arranged the way the user left it. Sidebar organization, ordering, visibility, keyboard traversal, view choice, and List sorting all reuse persistent UI state rather than adding backend concepts or duplicate preference stores.
