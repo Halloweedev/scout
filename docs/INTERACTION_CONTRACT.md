@@ -26,7 +26,7 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 ## Quick Look
 
 - Space opens or closes Quick Look for the current selection.
-- Arrow navigation continues to change the selected item while Quick Look is open, and the preview follows the selection.
+- Arrow navigation continues to change the selected item while Quick Look is open, and the preview follows the selection in all four directions where the current view supports spatial movement.
 - Escape closes Quick Look.
 
 ## Keyboard discovery
@@ -34,6 +34,8 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Typing a file-name prefix selects the next visible matching item.
 - The type-ahead buffer resets after a short pause.
 - Keyboard navigation maintains a visible cursor inside a multi-selection without replacing the selection state.
+- Ctrl+Tab and Ctrl+Shift+Tab cycle tabs in visual order.
+- Windows/Linux Alt+Left and Alt+Right navigate pane history; Alt+Up navigates to the parent folder.
 
 ## Focus and accessibility
 
@@ -41,6 +43,25 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Focused and unfocused selections remain visually distinct.
 - Active file surfaces expose listbox semantics and selected entries expose `aria-selected`.
 - Keyboard interactions must not hijack text inputs, rename fields, search, or editable content.
+- Context menus expose menu/menuitem semantics and support Shift+F10 or the platform Context Menu key from the current selection.
+- Context-menu keyboard navigation uses Arrow Up/Down, Home/End, Tab/Shift+Tab cycling, Enter/Space activation, and Escape dismissal.
+
+## Navigation chrome
+
+- Breadcrumbs remain actionable at every visible ancestor and the current/deepest location is automatically kept in view.
+- Overflowing breadcrumb paths scroll horizontally without exposing a permanent scrollbar.
+- Wheel/trackpad input over an overflowing breadcrumb strip scrolls the path rather than clipping ancestors permanently.
+- During an internal file drag, overflowing breadcrumbs edge-scroll so hidden ancestor drop targets remain reachable.
+- Overflowing tab strips scroll horizontally and keep the active tab visible.
+- Sidebar content scrolls vertically when locations, bookmarks, or workspaces exceed the available height.
+- The sidebar width is directly resizable, persisted, keyboard-adjustable through its separator, and resettable to the default width.
+- Multi-pane layouts expose persisted draggable splitters with keyboard-adjustable separators and a 50/50 reset.
+
+## Menus and transient surfaces
+
+- Context menus are clamped inside the visible app viewport and become internally scrollable if their content is taller than the available space.
+- Keyboard and pointer users share the same menu actions; keyboard support does not create a second command surface.
+- Current-folder Search uses Escape progressively: the first Escape clears a non-empty filter and the next Escape exits the field.
 
 ## Drag and drop
 
@@ -53,6 +74,9 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Dragging outside a real Scout destination does not fall back to the active pane.
 - Invalid destinations are visibly distinct and dropping on them performs no filesystem mutation.
 - Portal remains an explicit non-filesystem drop target: dropping there adds references instead of moving files.
+- Breadcrumb ancestors, tabs, writable sidebar destinations, and folder rows are first-class file destinations.
+- Native OS drops resolve the actual hovered Scout destination instead of falling back blindly to the active folder.
+- Trash remains a semantic native-trash target rather than a generic filesystem move destination.
 
 ## Spring-loaded folders
 
@@ -61,6 +85,7 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - After the dwell, Scout opens the folder while preserving the in-progress drag so the user can continue deeper into the hierarchy.
 - Moving away before the dwell completes cancels the spring-load.
 - The same folder is not repeatedly spring-opened during one drag gesture.
+- Tabs and writable sidebar destinations may spring-switch/navigate during a drag without ending the drag gesture.
 
 ## Tabs
 
@@ -70,6 +95,9 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Close-tab behavior follows the visible tab order: closing the active tab selects the visible tab to its right, or the one to its left when there is no right neighbor.
 - Cmd/Ctrl+W follows the same visible-order close behavior after tabs have been rearranged.
 - Existing tab actions such as Close Tabs to the Left/Right operate on the visible order.
+- Middle-click closes a tab.
+- Cmd/Ctrl+Shift+T reopens the most recently closed tab.
+- Double-clicking empty tab-strip space creates a new tab.
 
 ## Operations feedback
 
@@ -93,3 +121,5 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 UX & Interaction 1.0 established selection, keyboard navigation, opening/renaming semantics, focus, and accessibility.
 
 UX & Interaction 2.0 adds destination-aware drag/drop, spring-loaded folders, draggable tab ordering, live operation feedback, and immediate undo/redo feedback on top of Scout's existing filesystem, Operations, and Footprints backends.
+
+UX & Interaction 3.0 adds scalable navigation chrome: overflow-safe tabs/sidebar/breadcrumbs, resizable sidebar and pane layouts, Quick Look spatial parity, and keyboard-native viewport-safe context menus.
