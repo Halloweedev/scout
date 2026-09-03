@@ -24,6 +24,7 @@ import { installQolPack2 } from "./lib/qol-pack2";
 import { installQolPack3 } from "./lib/qol-pack3";
 import { installQuickLook } from "./lib/quick-look";
 import { installSimilarPhotos } from "./lib/similar-photos";
+import { installTagCollections } from "./lib/tag-collections";
 import { installTags } from "./lib/tags";
 import { installTerminalActions } from "./lib/terminal-actions";
 import { installUtilities } from "./lib/utilities";
@@ -52,6 +53,7 @@ import "./menu-polish.css";
 import "./quality-polish.css";
 import "./m6.css";
 import "./file-health.css";
+import "./tag-collections.css";
 
 const root = document.getElementById("root");
 
@@ -81,6 +83,7 @@ const similarPhotosCleanup = installSimilarPhotos();
 const portalCleanup = installPortal();
 const convertersCleanup = installConverters();
 const tagsCleanup = installTags();
+const tagCollectionsCleanup = installTagCollections();
 const terminalActionsCleanup = installTerminalActions();
 const footprintsCleanup = installFootprints();
 const pdfToolsCleanup = installPdfTools();
@@ -101,6 +104,7 @@ if (import.meta.hot) {
     similarPhotosCleanup();
     portalCleanup();
     convertersCleanup();
+    tagCollectionsCleanup();
     tagsCleanup();
     terminalActionsCleanup();
     footprintsCleanup();
