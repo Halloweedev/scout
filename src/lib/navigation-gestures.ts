@@ -1,7 +1,4 @@
-function comparablePath(path: string) {
-  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
-  return /^[a-zA-Z]:/.test(normalized) ? normalized.toLowerCase() : normalized || "/";
-}
+const isMac = /mac|iphone|ipad|ipod/i.test(navigator.platform || navigator.userAgent);
 
 function breadcrumbPath(button: HTMLElement) {
   const display = button.closest<HTMLElement>(".path-display.breadcrumbs");
@@ -38,10 +35,6 @@ function destinationFromTarget(target: EventTarget | null) {
 }
 
 function openInNewTab(path: string) {
-  const current = document.querySelector<HTMLElement>(".explorer-pane.active")?.dataset.panePath;
-  if (current && comparablePath(current) === comparablePath(path)) {
-    // Opening the current location in another tab is still useful, so keep the normal flow.
-  }
   const button = document.querySelector<HTMLElement>(".tab-strip > .new-tab-button");
   if (!button) return false;
   button.click();
@@ -60,7 +53,8 @@ function handleAuxClick(event: MouseEvent) {
 }
 
 function handleClick(event: MouseEvent) {
-  if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
+  const modifier = isMac ? event.metaKey : event.ctrlKey;
+  if (!modifier || event.shiftKey || event.altKey || (isMac && event.ctrlKey)) return;
   const path = destinationFromTarget(event.target);
   if (!path || !openInNewTab(path)) return;
   event.preventDefault();
