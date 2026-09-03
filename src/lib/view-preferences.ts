@@ -5,9 +5,17 @@ const ADAPTIVE_KEY = "scout.adaptive-view.v1";
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 
 type ViewMode = "icons" | "list" | "columns" | "gallery";
+type SortColumn = "name" | "modified" | "size";
+type SortDirection = "asc" | "desc";
+
+interface FolderSortPreference {
+  column: SortColumn;
+  direction: SortDirection;
+}
 
 interface FolderViewPreference {
   view: ViewMode;
+  sort?: FolderSortPreference;
   updatedAt: number;
 }
 
@@ -17,8 +25,12 @@ const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "bmp", "t
 let observer: MutationObserver | null = null;
 let reconcileQueued = false;
 let applying = false;
+let applyingSort = false;
 let lastPath: string | null = null;
 let lastView: ViewMode | null = null;
+let lastSort: string | null = null;
+let sortRestorePendingPath: string | null = null;
+let sortApplyTimer: number | null = null;
 let adaptiveTimer: number | null = null;
 let adaptiveAttemptedPath: string | null = null;
 
@@ -62,6 +74,23 @@ function currentView(): ViewMode | null {
   return null;
 }
 
+function currentSort(): FolderSortPreference | null {
+  const header = document.querySelector<HTMLElement>(".explorer-pane.active .file-header");
+  if (!header) return null;
+  for (const cell of header.querySelectorAll<HTMLElement>("[data-scout-sort-column]")) {
+    const column = cell.dataset.scoutSortColumn as SortColumn | undefined;
+    if (!column || !["name", "modified", "size"].includes(column)) continue;
+    const text = cell.textContent ?? "";
+    if (text.includes("∧")) return { column, direction: "asc" };
+    if (text.includes("∨")) return { column, direction: "desc" };
+  }
+  return null;
+}
+
+function sortSignature(sort: FolderSortPreference | null) {
+  return sort ? `${sort.column}:${sort.direction}` : null;
+}
+
 function emitView(view: ViewMode) {
   const keys: Record<ViewMode, string> = { icons: "1", list: "2", columns: "3", gallery: "4" };
   applying = true;
@@ -80,7 +109,21 @@ function emitView(view: ViewMode) {
 
 function savePreference(path: string, view: ViewMode) {
   const preferences = readPreferences();
-  preferences[path] = { view, updatedAt: Date.now() };
+  preferences[path] = {
+    view,
+    sort: preferences[path]?.sort,
+    updatedAt: Date.now(),
+  };
+  writePreferences(preferences);
+}
+
+function saveSortPreference(path: string, sort: FolderSortPreference) {
+  const preferences = readPreferences();
+  preferences[path] = {
+    view: preferences[path]?.view ?? currentView() ?? "list",
+    sort,
+    updatedAt: Date.now(),
+  };
   writePreferences(preferences);
 }
 
@@ -90,6 +133,49 @@ function forgetPreference(path: string) {
   delete preferences[path];
   writePreferences(preferences);
   return true;
+}
+
+function applySort(path: string, sort: FolderSortPreference) {
+  if (sortApplyTimer !== null) window.clearTimeout(sortApplyTimer);
+  applyingSort = true;
+  sortApplyTimer = window.setTimeout(() => {
+    sortApplyTimer = null;
+    if (activePath() !== path || currentView() !== "list") {
+      applyingSort = false;
+      return;
+    }
+    const cell = document.querySelector<HTMLElement>(`.explorer-pane.active .file-header [data-scout-sort-column="${sort.column}"]`);
+    if (!cell) {
+      applyingSort = false;
+      queueReconcile();
+      return;
+    }
+
+    const before = currentSort();
+    if (before?.column !== sort.column) cell.click();
+    if (sort.direction === "desc") {
+      window.setTimeout(() => {
+        if (activePath() !== path) {
+          applyingSort = false;
+          return;
+        }
+        const afterColumn = currentSort();
+        if (afterColumn?.column === sort.column && afterColumn.direction !== "desc") cell.click();
+        window.setTimeout(() => {
+          applyingSort = false;
+          sortRestorePendingPath = null;
+          lastSort = sortSignature(currentSort());
+        }, 0);
+      }, 0);
+      return;
+    }
+
+    window.setTimeout(() => {
+      applyingSort = false;
+      sortRestorePendingPath = null;
+      lastSort = sortSignature(currentSort());
+    }, 0);
+  }, 0);
 }
 
 function inferAdaptiveView(): ViewMode | null {
@@ -137,23 +223,46 @@ function reconcile() {
   const view = currentView();
   if (!path || !view) return;
 
+  const preferences = readPreferences();
+  const preference = preferences[path];
+
   if (path !== lastPath) {
     lastPath = path;
     lastView = view;
+    lastSort = null;
+    sortRestorePendingPath = path;
     adaptiveAttemptedPath = null;
-    const preference = readPreferences()[path];
     if (preference?.view && preference.view !== view) {
       emitView(preference.view);
       return;
     }
     if (!preference && adaptiveEnabled()) scheduleAdaptive(path);
-    return;
   }
 
   if (view !== lastView) {
     const previous = lastView;
     lastView = view;
     if (!applying && previous !== null) savePreference(path, view);
+  }
+
+  if (view === "list") {
+    const sort = currentSort();
+    if (sortRestorePendingPath === path && sort) {
+      if (preference?.sort && sortSignature(sort) !== sortSignature(preference.sort)) {
+        if (!applyingSort) applySort(path, preference.sort);
+        return;
+      }
+      sortRestorePendingPath = null;
+      lastSort = sortSignature(sort);
+    } else if (!applyingSort && sort) {
+      const signature = sortSignature(sort);
+      if (lastSort === null) {
+        lastSort = signature;
+      } else if (signature !== lastSort) {
+        lastSort = signature;
+        saveSortPreference(path, sort);
+      }
+    }
   }
 
   if (adaptiveEnabled() && adaptiveAttemptedPath !== path && !readPreferences()[path]) scheduleAdaptive(path);
@@ -175,21 +284,23 @@ export function installViewPreferences() {
       id: "view.remember-folder",
       title: "Remember View for This Folder",
       category: "View",
-      keywords: ["folder", "view", "remember", "preference", "per folder"],
+      keywords: ["folder", "view", "remember", "preference", "per folder", "sort"],
       available: () => !!activePath() && !!currentView(),
       run: () => {
         const path = activePath();
         const view = currentView();
         if (!path || !view) throw new Error("No active folder view");
         savePreference(path, view);
-        toast(`Remembered ${view} view for this folder`);
+        const sort = currentSort();
+        if (sort) saveSortPreference(path, sort);
+        toast(`Remembered ${view} view${sort ? " and sorting" : ""} for this folder`);
       },
     },
     {
       id: "view.forget-folder",
       title: "Forget View for This Folder",
       category: "View",
-      keywords: ["folder", "view", "reset", "forget", "preference"],
+      keywords: ["folder", "view", "reset", "forget", "preference", "sort"],
       available: () => {
         const path = activePath();
         return !!path && !!readPreferences()[path];
@@ -198,8 +309,9 @@ export function installViewPreferences() {
         const path = activePath();
         if (!path || !forgetPreference(path)) throw new Error("This folder has no saved view");
         adaptiveAttemptedPath = null;
+        sortRestorePendingPath = path;
         if (adaptiveEnabled()) scheduleAdaptive(path);
-        toast("Forgot this folder view");
+        toast("Forgot this folder view and sorting");
       },
     },
     {
@@ -222,8 +334,9 @@ export function installViewPreferences() {
   observer.observe(document.body, {
     childList: true,
     subtree: true,
+    characterData: true,
     attributes: true,
-    attributeFilter: ["class", "data-pane-path", "data-entry-path", "data-entry-kind", "data-entry-extension"],
+    attributeFilter: ["class", "data-pane-path", "data-entry-path", "data-entry-kind", "data-entry-extension", "data-scout-sort-column"],
   });
   queueReconcile();
 
@@ -232,6 +345,8 @@ export function installViewPreferences() {
     observer?.disconnect();
     observer = null;
     if (adaptiveTimer !== null) window.clearTimeout(adaptiveTimer);
+    if (sortApplyTimer !== null) window.clearTimeout(sortApplyTimer);
     adaptiveTimer = null;
+    sortApplyTimer = null;
   };
 }
