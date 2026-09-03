@@ -1,7 +1,9 @@
 import { render } from "solid-js/web";
 import App from "./App";
+import { installActionRegistry } from "./lib/actions";
 import { installAutomation } from "./lib/automation";
 import { installAutomationLive } from "./lib/automation-live";
+import { installCommandPalette } from "./lib/command-palette";
 import { installConverters } from "./lib/converters";
 import { installDiskMap } from "./lib/disk-map";
 import { installDuplicateFinder } from "./lib/duplicates";
@@ -9,11 +11,14 @@ import { installFootprints } from "./lib/footprints";
 import { installGlobalSearch } from "./lib/global-search";
 import { installImageThumbnails } from "./lib/thumbnails";
 import { installImageTools } from "./lib/image-tools";
+import { installInspector } from "./lib/inspector";
 import { installInternalPointerDrag } from "./lib/internal-drag";
 import { installNativeFileDrop } from "./lib/native-drop";
 import { installOperationQueue } from "./lib/operation-queue";
 import { installPdfTools } from "./lib/pdf-tools";
 import { installPortal } from "./lib/portal";
+import { installQolActions } from "./lib/qol-actions";
+import { installQolBridge } from "./lib/qol-bridge";
 import { installQuickLook } from "./lib/quick-look";
 import { installSimilarPhotos } from "./lib/similar-photos";
 import { installTags } from "./lib/tags";
@@ -41,6 +46,7 @@ import "./view-polish.css";
 import "./column-browser.css";
 import "./menu-polish.css";
 import "./quality-polish.css";
+import "./m6.css";
 
 const root = document.getElementById("root");
 
@@ -48,6 +54,11 @@ if (!root) {
   throw new Error("Scout root element was not found");
 }
 
+const actionRegistryCleanup = installActionRegistry();
+const qolActionsCleanup = installQolActions();
+const qolBridgeCleanup = installQolBridge();
+const commandPaletteCleanup = installCommandPalette();
+const inspectorCleanup = installInspector();
 const nativeDropCleanup = installNativeFileDrop();
 const internalDragCleanup = installInternalPointerDrag();
 const quickLookCleanup = installQuickLook();
@@ -88,6 +99,11 @@ if (import.meta.hot) {
     operationQueueCleanup();
     automationCleanup();
     automationLiveCleanup();
+    inspectorCleanup();
+    commandPaletteCleanup();
+    qolBridgeCleanup();
+    qolActionsCleanup();
+    actionRegistryCleanup();
     void nativeDropCleanup.then((cleanup) => cleanup());
   });
 }
