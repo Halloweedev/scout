@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { registerAction, type ScoutActionContext } from "./actions";
 import { enqueueAndWait, type OperationJob } from "./operation-queue";
 
 interface ImageTransformResult {
@@ -10,7 +10,6 @@ interface ImageTransformResult {
 }
 
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "bmp", "tif", "tiff", "ico"]);
-let observer: MutationObserver | null = null;
 let overlay: HTMLDivElement | null = null;
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string) {
@@ -19,19 +18,10 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, className?: stri
   return node;
 }
 
-function selectedRows() {
-  return [...document.querySelectorAll<HTMLElement>(".explorer-pane.active .pane-file-row.selected")];
-}
-
-function selectedImagePaths() {
-  const rows = selectedRows();
-  if (!rows.length) return [];
-  if (!rows.every((row) => row.dataset.entryKind === "file" && IMAGE_EXTENSIONS.has((row.dataset.entryExtension ?? "").toLowerCase()))) return [];
-  return rows.map((row) => row.dataset.entryPath).filter((path): path is string => !!path);
-}
-
-function activeDirectory() {
-  return document.querySelector<HTMLElement>(".explorer-pane.active")?.dataset.panePath ?? null;
+function imagePaths(context: ScoutActionContext) {
+  if (!context.panePath || !context.selection.length) return [];
+  if (!context.selection.every((entry) => entry.kind === "file" && IMAGE_EXTENSIONS.has((entry.extension ?? "").toLowerCase()))) return [];
+  return context.selectedPaths;
 }
 
 function close() {
@@ -52,10 +42,8 @@ function optionalDimension(input: HTMLInputElement) {
   return Number.isFinite(value) && value > 0 ? Math.round(value) : null;
 }
 
-async function openImageTools() {
-  const paths = selectedImagePaths();
-  const destination = activeDirectory();
-  if (!paths.length || !destination) return;
+async function openImageTools(paths: string[], destination: string) {
+  if (!paths.length) return;
   close();
 
   overlay = element("div", "utility-backdrop");
@@ -174,32 +162,24 @@ async function openImageTools() {
   });
 }
 
-function enhanceMenu(menu: HTMLElement) {
-  if (menu.dataset.imageToolsEnhanced === "1") return;
-  menu.dataset.imageToolsEnhanced = "1";
-  if (!selectedImagePaths().length) return;
-  const separator = element("div", "menu-separator image-tools-menu-separator");
-  const button = element("button");
-  button.type = "button";
-  button.textContent = "Convert / Resize Images…";
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    menu.remove();
-    void openImageTools();
-  });
-  menu.append(separator, button);
-}
-
-function reconcile() {
-  for (const menu of document.querySelectorAll<HTMLElement>(".context-menu")) enhanceMenu(menu);
-}
-
 export function installImageTools() {
-  observer = new MutationObserver(reconcile);
-  observer.observe(document.body, { childList: true, subtree: true });
+  const unregister = registerAction({
+    id: "tools.convert-images",
+    title: "Convert / Resize Images…",
+    category: "Tools",
+    keywords: ["image", "resize", "convert", "webp", "png", "jpeg", "jpg"],
+    contextMenu: true,
+    contextMenuOrder: 122,
+    available: (context) => imagePaths(context).length > 0,
+    run: async (context) => {
+      const paths = imagePaths(context);
+      if (!paths.length || !context.panePath) throw new Error("Select one or more images to convert");
+      await openImageTools(paths, context.panePath);
+    },
+  });
+
   return () => {
-    observer?.disconnect();
-    observer = null;
+    unregister();
     close();
   };
 }
