@@ -231,12 +231,10 @@ function renderBar(context: ScoutActionContext) {
   const node = ensureBar();
   const actions = contextualActions(context);
   const quick = quickActions(context, actions);
+  closeMenu();
   node.replaceChildren();
   node.hidden = context.selectedPaths.length === 0;
-  if (node.hidden) {
-    closeMenu();
-    return;
-  }
+  if (node.hidden) return;
 
   const selection = create("div", "contextual-action-selection");
   const count = create("span", "contextual-action-count");
