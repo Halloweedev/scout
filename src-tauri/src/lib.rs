@@ -8,6 +8,7 @@ mod disk;
 mod duplicates;
 mod file_health;
 mod fs;
+mod git;
 mod history;
 mod images;
 mod pdf;
@@ -72,6 +73,11 @@ pub fn run() {
             fs::open_entry,
             fs::undo_last_operation,
             fs::redo_last_operation,
+            git::git_repository_status,
+            git::git_diff,
+            git::git_stage,
+            git::git_unstage,
+            git::git_discard,
             history::operation_history,
             images::transform_images,
             images::enqueue_image_transform,
