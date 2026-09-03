@@ -15,10 +15,14 @@ interface SpecialDirectories {
   applications: string | null;
 }
 
+const SPRING_DELAY_MS = 720;
+
 let observer: MutationObserver | null = null;
 let locations = new Map<string, string>();
 let trashPath = "";
 let disposed = false;
+let springTimer: number | null = null;
+let springTarget: HTMLElement | null = null;
 
 function basename(path: string) {
   return path.split(/[\\/]/).filter(Boolean).at(-1) || path;
@@ -101,6 +105,47 @@ function scheduleDecorate() {
   queueMicrotask(decorate);
 }
 
+function clearSpring() {
+  if (springTimer !== null) window.clearTimeout(springTimer);
+  springTimer = null;
+  springTarget?.classList.remove("internal-drop-spring");
+  springTarget = null;
+}
+
+function hoveredSidebarTarget(event: PointerEvent) {
+  const hit = document.elementFromPoint(event.clientX, event.clientY);
+  return hit?.closest<HTMLElement>(".sidebar-item[data-scout-drop-path]") ?? null;
+}
+
+function handlePointerMove(event: PointerEvent) {
+  if (!document.documentElement.classList.contains("internal-file-drag")) {
+    clearSpring();
+    return;
+  }
+
+  const target = hoveredSidebarTarget(event);
+  if (!target || target.dataset.scoutDropAction === "trash" || target.classList.contains("active")) {
+    clearSpring();
+    return;
+  }
+  if (springTarget === target) return;
+
+  clearSpring();
+  springTarget = target;
+  target.classList.add("internal-drop-spring");
+  springTimer = window.setTimeout(() => {
+    springTimer = null;
+    const button = springTarget;
+    if (!button || !button.isConnected || button.dataset.scoutDropAction === "trash") {
+      clearSpring();
+      return;
+    }
+    button.classList.remove("internal-drop-spring");
+    springTarget = null;
+    button.click();
+  }, SPRING_DELAY_MS);
+}
+
 export function installSidebarDropTargets() {
   disposed = false;
   void invoke<SpecialDirectories>("special_directories")
@@ -117,13 +162,20 @@ export function installSidebarDropTargets() {
 
   observer = new MutationObserver(scheduleDecorate);
   observer.observe(document.body, { childList: true, subtree: true });
+  window.addEventListener("pointermove", handlePointerMove);
+  window.addEventListener("pointerup", clearSpring);
+  window.addEventListener("pointercancel", clearSpring);
 
   return () => {
     disposed = true;
     observer?.disconnect();
     observer = null;
+    clearSpring();
+    window.removeEventListener("pointermove", handlePointerMove);
+    window.removeEventListener("pointerup", clearSpring);
+    window.removeEventListener("pointercancel", clearSpring);
     locations.clear();
     trashPath = "";
-    document.querySelectorAll<HTMLElement>("[data-scout-drop-path], [data-scout-drop-action]").forEach(clearTarget);
+    document.querySelectorAll<HTMLElement>(".sidebar-item[data-scout-drop-path], .sidebar-item[data-scout-drop-action]").forEach(clearTarget);
   };
 }
