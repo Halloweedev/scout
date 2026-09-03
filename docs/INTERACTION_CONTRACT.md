@@ -93,6 +93,16 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Forget View for This Folder clears both the remembered view and its remembered List sorting.
 - Adaptive View continues to apply only where no explicit folder preference is present.
 
+## Navigation continuity
+
+- During the current Scout session, each folder/view combination remembers its scroll position independently.
+- Icons, List, and Gallery also remember the current selected paths when leaving a folder and restore only items that still exist when the user returns.
+- Back/forward navigation, tab switching, and ordinary folder navigation all use the same remembered folder state instead of special-case histories.
+- Pointer and keyboard interactions capture state before navigation can replace the active listing; later explicit selection or selection clearing becomes the new remembered state.
+- Changing view modes does not overwrite another view's scroll/selection memory for the same folder.
+- Miller Columns restore their horizontal browser position but never synthesize row clicks to restore selection because a directory click is itself a navigation command in that view.
+- Navigation memory is session-only, bounded, and subordinate to the filesystem: missing or deleted remembered paths are ignored rather than recreated.
+
 ## List view columns
 
 - List view keeps Name, Modified, and Size aligned between the sticky header and file rows.
@@ -111,6 +121,12 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Empty-space menus use the shared Actions Registry: compatible folder-level tools are enriched from the same registry rather than being duplicated in a second menu implementation.
 - Opening a folder-background menu activates that pane and clears stale item selection before folder-level actions are resolved.
 - Current-folder Search uses Escape progressively: the first Escape clears a non-empty filter and the next Escape exits the field.
+- A non-empty file selection exposes a compact contextual action bar resolved from the same Actions Registry used by context menus, Inspector, and the Command Palette.
+- The contextual bar prioritizes up to five high-frequency actions appropriate to single or multi-selection; dangerous actions are not promoted as generic fallback quick actions.
+- `More` contains only the available actions not already promoted into the quick set, grouped by registry category with shortcut hints where available.
+- The overflow footer opens All Commands in the existing Cmd/Ctrl+K Command Palette instead of creating another exhaustive action browser.
+- Contextual overflow keyboard navigation supports Arrow Up/Down, Home/End, and Escape; dismissing the menu restores truthful `aria-expanded` state and Escape restores focus to the trigger.
+- Contextual action menus stay viewport-clamped, reposition on window resize, and close when the user interacts outside them or executes an action.
 
 ## Drag and drop
 
@@ -177,3 +193,7 @@ UX & Interaction 3.0 adds scalable navigation chrome: overflow-safe tabs/sidebar
 UX & Interaction 4.0 adds dense daily-driver controls without new backend systems: persisted resizable List columns, keyboard-sortable headers, registry-backed folder-background actions, menu type-ahead, and complete tab-strip keyboard semantics with conflict-free platform shortcuts.
 
 UX & Interaction 5.0 adds persistent workspace organization: collapsible and keyboard-traversable sidebar sections, persisted Bookmark/Workspace ordering and custom labels, persistent sidebar visibility, and per-folder List sorting integrated into the existing folder-view preference model.
+
+UX & Interaction 6.0 adds bounded in-session folder/view navigation memory so returning through history, tabs, or folder navigation restores position and surviving selection without changing filesystem authority.
+
+UX & Interaction 7.0 adds a compact selection-aware action surface that exposes the existing Actions Registry at the moment of selection, with overflow and Command Palette escalation instead of duplicated command implementations.
