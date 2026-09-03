@@ -1,4 +1,4 @@
-import { copyEntries, moveEntries } from "./fs";
+import { copyEntries, moveEntries, trashEntries } from "./fs";
 
 interface DragCandidate {
   startX: number;
@@ -161,6 +161,12 @@ function updateGhostText() {
   const label = ghost.querySelector<HTMLElement>(".ux2-drag-label");
   if (!action || !label) return;
 
+  if (currentDestination?.element.dataset.scoutDropAction === "trash") {
+    action.textContent = "Trash";
+    label.textContent = candidate.paths.length === 1 ? candidate.label : `${candidate.paths.length} items`;
+    return;
+  }
+
   if (currentDestination?.portal) {
     action.textContent = "Add";
     label.textContent = candidate.paths.length === 1 ? candidate.label : `${candidate.paths.length} items`;
@@ -209,11 +215,15 @@ function resolveDestination(x: number, y: number): DropDestination | null {
   const sidebarTarget = hit.closest<HTMLElement>("[data-scout-drop-path]");
   const sidebarPath = sidebarTarget?.dataset.scoutDropPath;
   if (sidebarTarget && sidebarPath) {
+    const trashTarget = sidebarTarget.dataset.scoutDropAction === "trash";
+    const valid = trashTarget
+      ? !candidate.paths.some((source) => pathWithin(sidebarPath, source))
+      : destinationIsValid(sidebarPath);
     return {
       path: sidebarPath,
       label: sidebarTarget.dataset.scoutDropLabel || basename(sidebarPath),
       element: sidebarTarget,
-      valid: destinationIsValid(sidebarPath),
+      valid,
       portal: false,
       springRow: null,
     };
@@ -306,8 +316,8 @@ function applyDestination(next: DropDestination | null) {
   }
 
   next.element.classList.add("internal-drop-target", next.valid ? "internal-drop-valid" : "internal-drop-invalid");
-  if (copyMode && !next.portal && next.valid) next.element.classList.add("internal-drop-copy");
-  next.element.dataset.dropIntent = next.portal ? "Add to Portal" : next.valid
+  if (copyMode && !next.portal && next.valid && next.element.dataset.scoutDropAction !== "trash") next.element.classList.add("internal-drop-copy");
+  next.element.dataset.dropIntent = next.portal ? "Add to Portal" : next.element.dataset.scoutDropAction === "trash" ? "Move to Trash" : next.valid
     ? `${copyMode ? "Copy" : "Move"} to ${next.label}`
     : "Not available";
 
@@ -369,6 +379,19 @@ function handlePointerMove(event: PointerEvent) {
 }
 
 async function performDrop(paths: string[], target: DropDestination, shouldCopy: boolean) {
+  if (target.element.dataset.scoutDropAction === "trash") {
+    try {
+      await trashEntries(paths);
+      toast(paths.length === 1 ? "Moved item to Trash" : `Moved ${paths.length} items to Trash`);
+      window.dispatchEvent(new CustomEvent("scout:ux-files-mutated", {
+        detail: { kind: "trash", paths },
+      }));
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), true);
+    }
+    return;
+  }
+
   if (target.portal) {
     try {
       const key = "scout:portal:v1";
