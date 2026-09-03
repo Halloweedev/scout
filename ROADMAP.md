@@ -188,3 +188,16 @@ UX 3 makes Scout's navigation chrome scale with real-world use and brings pointe
 - [x] Preserve Cmd/Ctrl+1 through Cmd/Ctrl+4 for Icons / List / Columns / Gallery instead of stealing them for numbered tabs
 
 UX 4 improves high-frequency desktop file-manager work without adding new backend systems: data density remains configurable, empty-space actions converge on the registry, and keyboard parity does not override established Scout shortcuts.
+
+### UX 5 — Workspace organization and persistent layout
+
+- [x] Sidebar sections collapse/expand directly and remember disclosure state across launches
+- [x] Built-in and dynamically injected sidebar sections share the same disclosure behavior instead of implementing separate controls
+- [x] Sidebar section headings support Enter/Space activation plus Arrow Left/Right collapse/expand semantics
+- [x] Sidebar navigation supports Arrow Up/Down, Home/End, and printable-character type-ahead across visible destinations
+- [x] Sidebar visibility persists and is exposed through the shared Actions Registry
+- [x] Platform-aware Toggle Sidebar shortcuts: Control+Cmd+S on macOS and Ctrl+Shift+B on Windows/Linux
+- [x] Per-folder view preferences now include List sort column and direction
+- [x] Saved List sorting restores safely across folder navigation, view changes, and opposite-direction same-column states
+
+UX 5 focuses on keeping Scout arranged the way the user left it. Sidebar organization, visibility, keyboard traversal, view choice, and List sorting all reuse existing persistent UI state rather than adding backend concepts or duplicate preference stores.
