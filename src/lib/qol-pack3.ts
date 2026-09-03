@@ -1,3 +1,4 @@
+import { copyEntries, moveEntries } from "./fs";
 import { registerActions, type ScoutActionContext } from "./actions";
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -75,12 +76,35 @@ function navigateParent(context: ScoutActionContext) {
   window.dispatchEvent(new CustomEvent("scout:navigate", { detail: { path: parentPath(entry.path) } }));
 }
 
+function panes() {
+  return [...document.querySelectorAll<HTMLElement>(".explorer-pane")]
+    .filter((pane) => pane.offsetParent !== null && !!pane.dataset.panePath);
+}
+
+function otherPanePath() {
+  const visible = panes();
+  if (visible.length < 2) return null;
+  const active = visible.findIndex((pane) => pane.classList.contains("active"));
+  const next = visible[(Math.max(active, 0) + 1) % visible.length];
+  return next?.dataset.panePath ?? null;
+}
+
 function paneCycle(delta: number) {
-  const panes = [...document.querySelectorAll<HTMLElement>(".explorer-pane")];
-  if (panes.length < 2) throw new Error("Add another pane first");
-  const active = panes.findIndex((pane) => pane.classList.contains("active"));
-  const next = panes[(Math.max(active, 0) + delta + panes.length) % panes.length];
+  const visible = panes();
+  if (visible.length < 2) throw new Error("Add another pane first");
+  const active = visible.findIndex((pane) => pane.classList.contains("active"));
+  const next = visible[(Math.max(active, 0) + delta + visible.length) % visible.length];
   next.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+}
+
+async function transferToOtherPane(context: ScoutActionContext, mode: "copy" | "move") {
+  const destination = otherPanePath();
+  if (!destination) throw new Error("Add another pane first");
+  if (!context.selectedPaths.length) throw new Error("Select one or more items first");
+  if (mode === "copy") await copyEntries(context.selectedPaths, destination);
+  else await moveEntries(context.selectedPaths, destination);
+  toast(`${mode === "copy" ? "Copied" : "Moved"} ${context.selectedPaths.length} item${context.selectedPaths.length === 1 ? "" : "s"} to the next pane`);
+  window.dispatchEvent(new KeyboardEvent("keydown", { key: "F5", bubbles: true, cancelable: true }));
 }
 
 function sameExtension(context: ScoutActionContext) {
@@ -146,6 +170,28 @@ export function installQolPack3() {
       run: navigateParent,
     },
     {
+      id: "file.copy-other-pane",
+      title: "Copy to Next Pane",
+      category: "File",
+      subtitle: "Copy the current selection to the next visible pane",
+      keywords: ["copy", "pane", "split", "other pane"],
+      contextMenu: true,
+      contextMenuOrder: 36,
+      available: (context) => context.selectedPaths.length > 0 && !!otherPanePath(),
+      run: (context) => transferToOtherPane(context, "copy"),
+    },
+    {
+      id: "file.move-other-pane",
+      title: "Move to Next Pane",
+      category: "File",
+      subtitle: "Move the current selection to the next visible pane",
+      keywords: ["move", "pane", "split", "other pane"],
+      contextMenu: true,
+      contextMenuOrder: 37,
+      available: (context) => context.selectedPaths.length > 0 && !!otherPanePath(),
+      run: (context) => transferToOtherPane(context, "move"),
+    },
+    {
       id: "selection.same-extension",
       title: "Select Files with Same Extension",
       category: "Selection",
@@ -182,7 +228,7 @@ export function installQolPack3() {
       title: "Focus Next Pane",
       category: "Navigation",
       keywords: ["split", "pane", "focus", "next"],
-      available: () => document.querySelectorAll(".explorer-pane").length > 1,
+      available: () => panes().length > 1,
       run: () => paneCycle(1),
     },
     {
@@ -190,7 +236,7 @@ export function installQolPack3() {
       title: "Focus Previous Pane",
       category: "Navigation",
       keywords: ["split", "pane", "focus", "previous"],
-      available: () => document.querySelectorAll(".explorer-pane").length > 1,
+      available: () => panes().length > 1,
       run: () => paneCycle(-1),
     },
   ]);

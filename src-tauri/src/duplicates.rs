@@ -4,11 +4,13 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     fs::File,
-    io::{BufReader, Read},
+    io::{BufReader, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
 };
 use tauri::AppHandle;
 use walkdir::WalkDir;
+
+const PREHASH_CHUNK: usize = 64 * 1024;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,13 +31,17 @@ pub struct DuplicateScan {
     groups: Vec<DuplicateGroup>,
 }
 
-fn hash_file(path: &Path, context: Option<&JobContext>) -> Result<String, String> {
+fn cancelled(context: Option<&JobContext>) -> bool {
+    context.is_some_and(JobContext::cancelled)
+}
+
+fn full_hash(path: &Path, context: Option<&JobContext>) -> Result<String, String> {
     let file = File::open(path).map_err(|error| error.to_string())?;
     let mut reader = BufReader::new(file);
     let mut hasher = Sha256::new();
     let mut buffer = vec![0u8; 1024 * 1024];
     loop {
-        if context.is_some_and(JobContext::cancelled) {
+        if cancelled(context) {
             return Err("Duplicate scan cancelled".into());
         }
         let read = reader.read(&mut buffer).map_err(|error| error.to_string())?;
@@ -44,6 +50,35 @@ fn hash_file(path: &Path, context: Option<&JobContext>) -> Result<String, String
         }
         hasher.update(&buffer[..read]);
     }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn prehash_file(path: &Path, size: u64, context: Option<&JobContext>) -> Result<String, String> {
+    if cancelled(context) {
+        return Err("Duplicate scan cancelled".into());
+    }
+    let mut file = File::open(path).map_err(|error| error.to_string())?;
+    let mut hasher = Sha256::new();
+    hasher.update(size.to_le_bytes());
+
+    let first_len = usize::try_from(size.min(PREHASH_CHUNK as u64)).unwrap_or(PREHASH_CHUNK);
+    let mut first = vec![0u8; first_len];
+    if first_len > 0 {
+        file.read_exact(&mut first).map_err(|error| error.to_string())?;
+        hasher.update(&first);
+    }
+
+    if size > PREHASH_CHUNK as u64 {
+        if cancelled(context) {
+            return Err("Duplicate scan cancelled".into());
+        }
+        let tail_len = usize::try_from(size.min(PREHASH_CHUNK as u64)).unwrap_or(PREHASH_CHUNK);
+        file.seek(SeekFrom::End(-(tail_len as i64))).map_err(|error| error.to_string())?;
+        let mut tail = vec![0u8; tail_len];
+        file.read_exact(&mut tail).map_err(|error| error.to_string())?;
+        hasher.update(&tail);
+    }
+
     Ok(format!("{:x}", hasher.finalize()))
 }
 
@@ -56,7 +91,7 @@ fn scan(root: PathBuf, min_size: u64, context: Option<&JobContext>) -> Result<Du
     let mut scanned_files = 0usize;
 
     for entry in WalkDir::new(&root).follow_links(false) {
-        if context.is_some_and(JobContext::cancelled) {
+        if cancelled(context) {
             return Err("Duplicate scan cancelled".into());
         }
         let entry = match entry {
@@ -82,22 +117,55 @@ fn scan(root: PathBuf, min_size: u64, context: Option<&JobContext>) -> Result<Du
         by_size.entry(metadata.len()).or_default().push(entry.into_path());
     }
 
-    let hash_candidates: usize = by_size
+    let prehash_total: usize = by_size
         .values()
         .filter(|paths| paths.len() > 1)
         .map(Vec::len)
         .sum();
-    let mut hashed = 0usize;
-    let mut groups = Vec::new();
+    let mut prehashed = 0usize;
+    let mut full_groups: Vec<(u64, Vec<PathBuf>)> = Vec::new();
+
     for (size, candidates) in by_size.into_iter().filter(|(_, paths)| paths.len() > 1) {
-        let mut by_hash: HashMap<String, Vec<PathBuf>> = HashMap::new();
+        let mut by_prehash: HashMap<String, Vec<PathBuf>> = HashMap::new();
         for path in candidates {
-            if context.is_some_and(JobContext::cancelled) {
+            if cancelled(context) {
                 return Err("Duplicate scan cancelled".into());
             }
-            let digest = match hash_file(&path, context) {
+            match prehash_file(&path, size, context) {
+                Ok(digest) => by_prehash.entry(digest).or_default().push(path),
+                Err(error) if cancelled(context) => return Err(error),
+                Err(_) => {}
+            }
+            prehashed += 1;
+            if let Some(context) = context {
+                let progress = if prehash_total == 0 {
+                    0.5
+                } else {
+                    0.2 + 0.3 * (prehashed as f64 / prehash_total as f64)
+                };
+                context.progress(
+                    Some(progress),
+                    Some(format!("Fingerprinting {prehashed} of {prehash_total} candidates")),
+                );
+            }
+        }
+        for paths in by_prehash.into_values().filter(|paths| paths.len() > 1) {
+            full_groups.push((size, paths));
+        }
+    }
+
+    let full_total: usize = full_groups.iter().map(|(_, paths)| paths.len()).sum();
+    let mut hashed = 0usize;
+    let mut groups = Vec::new();
+    for (size, candidates) in full_groups {
+        let mut by_hash: HashMap<String, Vec<PathBuf>> = HashMap::new();
+        for path in candidates {
+            if cancelled(context) {
+                return Err("Duplicate scan cancelled".into());
+            }
+            let digest = match full_hash(&path, context) {
                 Ok(digest) => digest,
-                Err(error) if context.is_some_and(JobContext::cancelled) => return Err(error),
+                Err(error) if cancelled(context) => return Err(error),
                 Err(_) => {
                     hashed += 1;
                     continue;
@@ -105,14 +173,14 @@ fn scan(root: PathBuf, min_size: u64, context: Option<&JobContext>) -> Result<Du
             };
             hashed += 1;
             if let Some(context) = context {
-                let progress = if hash_candidates == 0 {
+                let progress = if full_total == 0 {
                     1.0
                 } else {
-                    0.2 + 0.8 * (hashed as f64 / hash_candidates as f64)
+                    0.5 + 0.5 * (hashed as f64 / full_total as f64)
                 };
                 context.progress(
                     Some(progress),
-                    Some(format!("Hashing {hashed} of {hash_candidates} candidates")),
+                    Some(format!("Verifying {hashed} of {full_total} likely duplicates")),
                 );
             }
             by_hash.entry(digest).or_default().push(path);
