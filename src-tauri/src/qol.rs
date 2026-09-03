@@ -107,7 +107,7 @@ pub fn create_symlinks(paths: Vec<String>, destination: String) -> Result<Vec<Sy
         return Err("Symlink destination is not a directory".into());
     }
 
-    let mut created = Vec::with_capacity(paths.len());
+    let mut created: Vec<SymlinkResult> = Vec::with_capacity(paths.len());
     for value in paths {
         let source = PathBuf::from(&value);
         fs::symlink_metadata(&source).map_err(|error| error.to_string())?;
@@ -159,6 +159,7 @@ pub fn open_in_ide(path: String, ide: String) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
+        let _ = program;
         Command::new("open")
             .arg("-a")
             .arg(app_name)
