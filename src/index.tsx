@@ -19,6 +19,7 @@ import { installPdfTools } from "./lib/pdf-tools";
 import { installPortal } from "./lib/portal";
 import { installQolActions } from "./lib/qol-actions";
 import { installQolBridge } from "./lib/qol-bridge";
+import { installQolPack2 } from "./lib/qol-pack2";
 import { installQuickLook } from "./lib/quick-look";
 import { installSimilarPhotos } from "./lib/similar-photos";
 import { installTags } from "./lib/tags";
@@ -57,6 +58,7 @@ if (!root) {
 const actionRegistryCleanup = installActionRegistry();
 const qolActionsCleanup = installQolActions();
 const qolBridgeCleanup = installQolBridge();
+const qolPack2Cleanup = installQolPack2();
 const commandPaletteCleanup = installCommandPalette();
 const inspectorCleanup = installInspector();
 const nativeDropCleanup = installNativeFileDrop();
@@ -101,6 +103,7 @@ if (import.meta.hot) {
     automationLiveCleanup();
     inspectorCleanup();
     commandPaletteCleanup();
+    qolPack2Cleanup();
     qolBridgeCleanup();
     qolActionsCleanup();
     actionRegistryCleanup();
