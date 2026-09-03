@@ -40,7 +40,8 @@ function absolutePath(root: string, relative: string) {
 function pathWithin(path: string, parent: string) {
   const child = normalizePath(path);
   const root = normalizePath(parent);
-  return child === root || child.startsWith(`${root}/`);
+  if (child === root) return true;
+  return child.startsWith(root.endsWith("/") ? root : `${root}/`);
 }
 
 function exactMarker(file: GitFileStatus) {
@@ -127,8 +128,14 @@ function repositoryBadge(path: string, report: GitRepositoryStatus) {
   return button;
 }
 
-function annotatePane(pane: HTMLElement, path: string, report: GitRepositoryStatus | null) {
+function clearPaneState(pane: HTMLElement) {
   pane.querySelectorAll(".git-ambient-badge, .git-ambient-pane").forEach((node) => node.remove());
+  pane.querySelectorAll<HTMLElement>("[data-git-state]").forEach((row) => delete row.dataset.gitState);
+  pane.classList.remove("git-aware-pane");
+}
+
+function annotatePane(pane: HTMLElement, path: string, report: GitRepositoryStatus | null) {
+  clearPaneState(pane);
   pane.classList.toggle("git-aware-pane", !!report);
   if (!report) return;
 
@@ -156,7 +163,6 @@ function annotatePane(pane: HTMLElement, path: string, report: GitRepositoryStat
       continue;
     }
 
-    delete row.dataset.gitState;
     if (row.dataset.entryKind !== "directory") continue;
     let nested = 0;
     for (const changed of changedPaths) {
@@ -254,7 +260,6 @@ export function installGitAmbient() {
     window.removeEventListener("scout:action-ran", handleActionRan);
     window.removeEventListener("scout:toast", handleToast);
     window.removeEventListener("scout:git-refresh", handleRefresh);
-    document.querySelectorAll(".git-ambient-badge, .git-ambient-pane").forEach((node) => node.remove());
-    document.querySelectorAll(".git-aware-pane").forEach((node) => node.classList.remove("git-aware-pane"));
+    document.querySelectorAll<HTMLElement>(".explorer-pane").forEach(clearPaneState);
   };
 }
