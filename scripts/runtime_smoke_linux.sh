@@ -65,25 +65,63 @@ fi
 
 xdotool windowsize "$WINDOW_ID" 1240 780 || true
 xdotool windowmove "$WINDOW_ID" 20 20 || true
-xdotool windowfocus "$WINDOW_ID" || true
+
+# Xvfb intentionally runs without a window manager. xdotool's `key --window`
+# path can transiently report X focus window 1 under WebKitGTK, even though
+# Scout is alive. Focus the X window directly and send ordinary keyboard
+# events, retrying instead of turning a focus race into a false app failure.
+focus_scout() {
+  xdotool windowfocus --sync "$WINDOW_ID" >/dev/null 2>&1 || xdotool windowfocus "$WINDOW_ID" >/dev/null 2>&1 || true
+  sleep 0.08
+}
+
+send_key() {
+  local key="$1"
+  for _ in 1 2 3; do
+    focus_scout
+    if xdotool key --clearmodifiers "$key" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.15
+  done
+  echo "Could not send runtime-smoke key: $key" >&2
+  cat "$LOG_PATH" >&2 || true
+  exit 1
+}
+
+send_text() {
+  local text="$1"
+  for _ in 1 2 3; do
+    focus_scout
+    if xdotool type --clearmodifiers --delay 10 "$text" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.15
+  done
+  echo "Could not type runtime-smoke text" >&2
+  cat "$LOG_PATH" >&2 || true
+  exit 1
+}
+
+focus_scout
 sleep 1
 
 # Global editable location entry must work even in a keyboard-first flow.
-xdotool key --window "$WINDOW_ID" ctrl+l
+send_key ctrl+l
 sleep 0.3
-xdotool type --window "$WINDOW_ID" --clearmodifiers '~/A-Folder'
-xdotool key --window "$WINDOW_ID" Return
+send_text '~/A-Folder'
+send_key Return
 sleep 0.8
-xdotool key --window "$WINDOW_ID" ctrl+l
+send_key ctrl+l
 sleep 0.3
-xdotool type --window "$WINDOW_ID" --clearmodifiers '~'
-xdotool key --window "$WINDOW_ID" Return
+send_text '~'
+send_key Return
 sleep 0.8
 
 # Tabs must create and close without disturbing the current folder.
-xdotool key --window "$WINDOW_ID" ctrl+t
+send_key ctrl+t
 sleep 0.4
-xdotool key --window "$WINDOW_ID" ctrl+w
+send_key ctrl+w
 sleep 0.5
 
 if ! kill -0 "$SCOUT_PID" 2>/dev/null; then
@@ -93,22 +131,22 @@ if ! kill -0 "$SCOUT_PID" 2>/dev/null; then
 fi
 
 # Finder-compatible view shortcuts: 1 Icons, 2 List, 3 Columns, 4 Gallery.
-xdotool key --window "$WINDOW_ID" ctrl+3
+send_key ctrl+3
 sleep 1
 
 # Real Miller-column keyboard flow:
 # Down selects A-Folder and reveals its child column.
 # Right focuses the child column; Down selects B-Folder and reveals its child.
 # Right focuses that column; Down selects 01-preview.txt and opens the preview column.
-xdotool key --window "$WINDOW_ID" Down
+send_key Down
 sleep 0.7
-xdotool key --window "$WINDOW_ID" Right
+send_key Right
 sleep 0.5
-xdotool key --window "$WINDOW_ID" Down
+send_key Down
 sleep 0.7
-xdotool key --window "$WINDOW_ID" Right
+send_key Right
 sleep 0.5
-xdotool key --window "$WINDOW_ID" Down
+send_key Down
 sleep 1.2
 
 if ! kill -0 "$SCOUT_PID" 2>/dev/null; then
@@ -126,9 +164,9 @@ if [[ ! -s "$SCREENSHOT_PATH" ]]; then
 fi
 
 # Walk out and back into the current column after preview creation.
-xdotool key --window "$WINDOW_ID" Left
+send_key Left
 sleep 0.4
-xdotool key --window "$WINDOW_ID" Right
+send_key Right
 sleep 0.6
 
 if ! kill -0 "$SCOUT_PID" 2>/dev/null; then
