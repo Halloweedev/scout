@@ -133,6 +133,8 @@ M7's implementation baseline is complete. Scout is intentionally developer-aware
 - [x] Platform-aware open/rename shortcuts
 - [x] Mouse back/forward buttons mapped to Scout pane history
 - [x] Native Alt+Left/Right pane-history navigation on Windows and Linux
+- [x] Native Alt+Up parent-folder navigation on Windows and Linux
+- [x] Ctrl+Tab / Ctrl+Shift+Tab cycles tabs in visual order
 - [x] Middle-click and Cmd/Ctrl-click navigation chrome opens breadcrumbs and sidebar folders in new tabs
 - [x] Cmd/Ctrl+Shift+T recovery for recently closed tabs
 - [x] Double-click empty tab-strip space to create a tab
