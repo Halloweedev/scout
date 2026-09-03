@@ -84,15 +84,17 @@
   box-shadow: inset 0 0 0 1px rgba(255, 120, 120, 0.14);
 }
 
-.tab.internal-drop-spring {
-  animation: scout-spring-tab 720ms cubic-bezier(.2,.8,.2,1) both;
+.tab.internal-drop-spring,
+.sidebar-item.internal-drop-spring {
+  animation: scout-spring-destination 720ms cubic-bezier(.2,.8,.2,1) both;
 }
 
-@keyframes scout-spring-tab {
+@keyframes scout-spring-destination {
   from { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
   to { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tab.internal-drop-spring { animation: none; }
+  .tab.internal-drop-spring,
+  .sidebar-item.internal-drop-spring { animation: none; }
 }
