@@ -1,4 +1,4 @@
-import { createFolder, duplicateEntries, moveEntries, openEntry, trashEntries } from "./fs";
+import { createFolder, moveEntries, openEntry } from "./fs";
 import { registerActions, type ScoutAction, type ScoutActionContext } from "./actions";
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -22,6 +22,15 @@ function dispatchShortcut(key: string, options: { shift?: boolean; alt?: boolean
 
 function dispatchPlainKey(key: string) {
   window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+}
+
+function dispatchAltKey(key: string) {
+  window.dispatchEvent(new KeyboardEvent("keydown", {
+    key,
+    altKey: true,
+    bubbles: true,
+    cancelable: true,
+  }));
 }
 
 async function copyText(value: string, label = "Copied") {
@@ -122,13 +131,9 @@ function actions(): ScoutAction[] {
       title: "Open",
       category: "File",
       keywords: ["launch", "enter"],
-      shortcut: "Enter",
+      shortcut: isMac ? "⌘↓" : "Enter",
       available: oneSelection,
-      run: async (context) => {
-        const entry = context.selection[0];
-        if (entry.kind === "directory") window.dispatchEvent(new CustomEvent("scout:navigate", { detail: { path: entry.path } }));
-        else await openEntry(entry.path);
-      },
+      run: () => isMac ? dispatchShortcut("ArrowDown") : dispatchPlainKey("Enter"),
     },
     {
       id: "file.open-new-tab",
@@ -155,7 +160,7 @@ function actions(): ScoutAction[] {
       id: "file.rename",
       title: "Rename",
       category: "File",
-      shortcut: "F2",
+      shortcut: isMac ? "Return" : "F2",
       available: oneSelection,
       run: () => dispatchPlainKey("F2"),
     },
@@ -163,24 +168,20 @@ function actions(): ScoutAction[] {
       id: "file.duplicate",
       title: "Duplicate",
       category: "File",
+      shortcut: `${modLabel}D`,
       keywords: ["clone", "copy"],
       available: hasSelection,
-      run: async (context) => {
-        await duplicateEntries(context.selectedPaths);
-        toast(context.selectedPaths.length === 1 ? "Duplicated item" : `Duplicated ${context.selectedPaths.length} items`);
-      },
+      run: () => dispatchShortcut("d"),
     },
     {
       id: "file.trash",
       title: "Move to Trash",
       category: "File",
+      shortcut: isMac ? "⌘⌫" : "Delete",
       keywords: ["delete", "remove"],
       danger: true,
       available: hasSelection,
-      run: async (context) => {
-        await trashEntries(context.selectedPaths);
-        toast(context.selectedPaths.length === 1 ? "Moved to Trash" : `Moved ${context.selectedPaths.length} items to Trash`);
-      },
+      run: () => dispatchPlainKey("Delete"),
     },
     {
       id: "file.copy-path",
@@ -237,10 +238,7 @@ function actions(): ScoutAction[] {
       shortcut: `${modLabel}⇧N`,
       keywords: ["create", "directory"],
       available: (context) => !!context.panePath,
-      run: async (context) => {
-        const folder = await createFolder(currentPath(context));
-        toast(`Created ${folder.name}`);
-      },
+      run: () => dispatchShortcut("n", { shift: true }),
     },
     {
       id: "file.folder-with-selection",
@@ -304,22 +302,22 @@ function actions(): ScoutAction[] {
       title: "Go Back",
       category: "Navigation",
       shortcut: isMac ? "⌘[" : "Alt+←",
-      run: () => dispatchShortcut("["),
+      run: () => isMac ? dispatchShortcut("[") : dispatchAltKey("ArrowLeft"),
     },
     {
       id: "navigation.forward",
       title: "Go Forward",
       category: "Navigation",
       shortcut: isMac ? "⌘]" : "Alt+→",
-      run: () => dispatchShortcut("]"),
+      run: () => isMac ? dispatchShortcut("]") : dispatchAltKey("ArrowRight"),
     },
     {
       id: "navigation.parent",
       title: "Go to Parent Folder",
       category: "Navigation",
-      shortcut: `${modLabel}↑`,
+      shortcut: isMac ? "⌘↑" : "Alt+↑",
       available: (context) => !!context.panePath,
-      run: () => dispatchShortcut("ArrowUp"),
+      run: () => isMac ? dispatchShortcut("ArrowUp") : dispatchAltKey("ArrowUp"),
     },
     {
       id: "navigation.location",
@@ -358,14 +356,6 @@ function actions(): ScoutAction[] {
       title: "New Tab",
       category: "Tabs",
       shortcut: `${modLabel}T`,
-      run: () => click(".new-tab-button"),
-    },
-    {
-      id: "tabs.duplicate",
-      title: "Duplicate Current Tab",
-      category: "Tabs",
-      keywords: ["clone", "same folder"],
-      available: (context) => context.hasActiveTab,
       run: () => click(".new-tab-button"),
     },
     {
