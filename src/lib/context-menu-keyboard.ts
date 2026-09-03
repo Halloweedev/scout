@@ -5,6 +5,7 @@ let typeaheadAt = 0;
 
 const MENU_MARGIN = 8;
 const TYPEAHEAD_TIMEOUT = 700;
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 
 function menuButtons(menu: HTMLElement) {
   return [...menu.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")]
@@ -35,9 +36,20 @@ function clampMenu(menu: HTMLElement) {
   if (Math.abs(nextTop - top) > 0.5) menu.style.top = `${nextTop}px`;
 }
 
+function normalizeNativeShortcutHints(menu: HTMLElement) {
+  for (const button of menu.querySelectorAll<HTMLButtonElement>("button:not([data-scout-action-registry])")) {
+    const shortcut = button.querySelector<HTMLElement>("kbd");
+    if (!shortcut) continue;
+    const label = (button.textContent ?? "").trim().toLocaleLowerCase();
+    if (label.startsWith("rename")) shortcut.textContent = isMac ? "Return" : "F2";
+    else if (label.startsWith("duplicate")) shortcut.textContent = isMac ? "⌘D" : "Ctrl+D";
+  }
+}
+
 function enhanceMenu(menu: HTMLElement) {
   menu.setAttribute("role", "menu");
   menu.setAttribute("aria-orientation", "vertical");
+  normalizeNativeShortcutHints(menu);
 
   const buttons = menuButtons(menu);
   for (const button of buttons) button.setAttribute("role", "menuitem");
