@@ -46,6 +46,39 @@ body.scout-sidebar-order-active * {
   cursor: default;
 }
 
+.sidebar .scout-sidebar-order-row.scout-sidebar-renaming > .workspace-open {
+  pointer-events: none;
+}
+
+.sidebar .scout-sidebar-order-row.scout-sidebar-renaming > .workspace-open > span:not(.workspace-count),
+.sidebar .scout-sidebar-order-row.scout-sidebar-renaming > .workspace-open > .workspace-count,
+.sidebar .scout-sidebar-order-row.scout-sidebar-renaming > .workspace-delete {
+  opacity: 0;
+}
+
+.sidebar .scout-sidebar-rename-input {
+  position: absolute;
+  z-index: 12;
+  top: 2px;
+  right: 4px;
+  bottom: 2px;
+  left: 25px;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  outline: none;
+  background: rgba(18, 18, 20, 0.96);
+  color: inherit;
+  font: inherit;
+  line-height: 1;
+  padding: 0 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar .scout-sidebar-rename-input:focus {
+  border-color: rgba(255, 255, 255, 0.32);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .sidebar .scout-sidebar-order-row {
     transition: opacity 90ms ease;
