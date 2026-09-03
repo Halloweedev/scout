@@ -1,3 +1,5 @@
+const isMac = /mac|iphone|ipad|ipod/i.test(navigator.platform || navigator.userAgent);
+
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof Element)) return false;
   return !!target.closest("input, textarea, select, [contenteditable='true']");
@@ -17,10 +19,34 @@ function cycleTab(direction: 1 | -1) {
   return true;
 }
 
+function activateNumberedTab(digit: number) {
+  const ordered = tabs();
+  if (!ordered.length) return false;
+  const index = digit === 9 ? ordered.length - 1 : digit - 1;
+  const tab = ordered[index];
+  if (!tab) return false;
+  tab.click();
+  tab.scrollIntoView({ block: "nearest", inline: "nearest" });
+  return true;
+}
+
 function handleKeyDown(event: KeyboardEvent) {
   if (isEditableTarget(event.target)) return;
-  if (!event.ctrlKey || event.metaKey || event.altKey || event.key !== "Tab") return;
-  if (!cycleTab(event.shiftKey ? -1 : 1)) return;
+
+  if (event.ctrlKey && !event.metaKey && !event.altKey && event.key === "Tab") {
+    if (!cycleTab(event.shiftKey ? -1 : 1)) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    return;
+  }
+
+  const numberedModifier = isMac
+    ? event.metaKey && !event.ctrlKey && !event.altKey
+    : event.ctrlKey && !event.metaKey && !event.altKey;
+  if (!numberedModifier || event.shiftKey) return;
+  const match = /^Digit([1-9])$/.exec(event.code);
+  if (!match) return;
+  if (!activateNumberedTab(Number(match[1]))) return;
   event.preventDefault();
   event.stopImmediatePropagation();
 }
