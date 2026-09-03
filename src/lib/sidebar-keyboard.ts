@@ -78,6 +78,15 @@ function typeAhead(sidebar: HTMLElement, character: string) {
   return false;
 }
 
+function restoreFocusAfterRemoval(sidebar: HTMLElement, removedIndex: number) {
+  window.requestAnimationFrame(() => {
+    if (!sidebar.isConnected) return;
+    const controls = visibleControls(sidebar);
+    if (!controls.length) return;
+    focusControl(controls[Math.min(removedIndex, controls.length - 1)]);
+  });
+}
+
 function handleSidebarDelete(event: KeyboardEvent, target: Element) {
   const row = target.closest<HTMLElement>(".scout-sidebar-order-row");
   if (!row) return false;
@@ -93,7 +102,14 @@ function handleSidebarDelete(event: KeyboardEvent, target: Element) {
   clearTypeBuffer();
 
   if (plainRemove) {
-    row.querySelector<HTMLButtonElement>(".workspace-delete")?.click();
+    const sidebar = row.closest<HTMLElement>(".sidebar");
+    const primary = row.querySelector<HTMLElement>(".workspace-open");
+    const remove = row.querySelector<HTMLButtonElement>(".workspace-delete");
+    if (remove) {
+      const removedIndex = sidebar && primary ? visibleControls(sidebar).indexOf(primary) : -1;
+      remove.click();
+      if (sidebar && removedIndex >= 0) restoreFocusAfterRemoval(sidebar, removedIndex);
+    }
   }
   return true;
 }
