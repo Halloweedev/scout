@@ -1,7 +1,10 @@
 let observer: MutationObserver | null = null;
 let reconcileQueued = false;
+let typeaheadBuffer = "";
+let typeaheadAt = 0;
 
 const MENU_MARGIN = 8;
+const TYPEAHEAD_TIMEOUT = 700;
 
 function menuButtons(menu: HTMLElement) {
   return [...menu.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")]
@@ -108,11 +111,53 @@ function moveFocus(menu: HTMLElement, delta: number) {
   setRovingFocus(menu, buttons[index], true);
 }
 
+function buttonLabel(button: HTMLButtonElement) {
+  const explicit = button.querySelector("span")?.textContent ?? button.textContent ?? "";
+  return explicit.trim().toLocaleLowerCase();
+}
+
+function findTypeaheadMatch(menu: HTMLElement, prefix: string) {
+  const buttons = menuButtons(menu);
+  if (!buttons.length) return null;
+  const current = document.activeElement instanceof HTMLButtonElement ? buttons.indexOf(document.activeElement) : -1;
+  for (let offset = 1; offset <= buttons.length; offset += 1) {
+    const index = (Math.max(current, -1) + offset) % buttons.length;
+    const button = buttons[index];
+    if (button && buttonLabel(button).startsWith(prefix)) return button;
+  }
+  return null;
+}
+
+function handleTypeahead(menu: HTMLElement, key: string) {
+  const now = performance.now();
+  if (now - typeaheadAt > TYPEAHEAD_TIMEOUT) typeaheadBuffer = "";
+  typeaheadAt = now;
+
+  const next = `${typeaheadBuffer}${key.toLocaleLowerCase()}`;
+  let match = findTypeaheadMatch(menu, next);
+  if (match) {
+    typeaheadBuffer = next;
+    setRovingFocus(menu, match, true);
+    return;
+  }
+
+  const single = key.toLocaleLowerCase();
+  match = findTypeaheadMatch(menu, single);
+  typeaheadBuffer = single;
+  if (match) setRovingFocus(menu, match, true);
+}
+
+function resetTypeahead() {
+  typeaheadBuffer = "";
+  typeaheadAt = 0;
+}
+
 function handleKeyDown(event: KeyboardEvent) {
   const keyboardMenuRequest = event.key === "ContextMenu" || (event.shiftKey && event.key === "F10");
   const menu = activeMenu();
 
   if (!menu) {
+    resetTypeahead();
     if (keyboardMenuRequest) openKeyboardContextMenu(event);
     return;
   }
@@ -120,12 +165,14 @@ function handleKeyDown(event: KeyboardEvent) {
   if (event.key === "ArrowDown") {
     event.preventDefault();
     event.stopPropagation();
+    resetTypeahead();
     moveFocus(menu, 1);
     return;
   }
   if (event.key === "ArrowUp") {
     event.preventDefault();
     event.stopPropagation();
+    resetTypeahead();
     moveFocus(menu, -1);
     return;
   }
@@ -134,19 +181,28 @@ function handleKeyDown(event: KeyboardEvent) {
     if (!buttons.length) return;
     event.preventDefault();
     event.stopPropagation();
+    resetTypeahead();
     setRovingFocus(menu, event.key === "Home" ? buttons[0] : buttons.at(-1) ?? null, true);
     return;
   }
   if (event.key === "Tab") {
     event.preventDefault();
     event.stopPropagation();
+    resetTypeahead();
     moveFocus(menu, event.shiftKey ? -1 : 1);
     return;
   }
   if ((event.key === "Enter" || event.key === " ") && document.activeElement instanceof HTMLButtonElement && menu.contains(document.activeElement)) {
     event.preventDefault();
     event.stopPropagation();
+    resetTypeahead();
     document.activeElement.click();
+    return;
+  }
+  if (event.key.length === 1 && event.key !== " " && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    event.preventDefault();
+    event.stopPropagation();
+    handleTypeahead(menu, event.key);
   }
 }
 
@@ -174,6 +230,7 @@ export function installContextMenuKeyboard() {
     observer?.disconnect();
     observer = null;
     reconcileQueued = false;
+    resetTypeahead();
     window.removeEventListener("keydown", handleKeyDown, true);
     document.removeEventListener("pointermove", handlePointerMove, true);
     window.removeEventListener("resize", handleResize);
