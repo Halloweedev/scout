@@ -83,6 +83,10 @@ function handleKeyDown(event: KeyboardEvent) {
   if (!sidebar) return;
   if (target.closest("input, textarea, select, [contenteditable='true']")) return;
 
+  // Alt+ArrowUp/Down belongs to the reorderable Bookmark/Workspace layer.
+  // Yield here so normal sidebar focus traversal never races that action.
+  if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) return;
+
   if (event.key === "ArrowDown") {
     if (!move(sidebar, 1)) return;
     event.preventDefault();
