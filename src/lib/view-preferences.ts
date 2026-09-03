@@ -135,6 +135,16 @@ function forgetPreference(path: string) {
   return true;
 }
 
+function finishSortRestore(path: string) {
+  if (activePath() !== path) {
+    applyingSort = false;
+    return;
+  }
+  applyingSort = false;
+  sortRestorePendingPath = null;
+  lastSort = sortSignature(currentSort());
+}
+
 function applySort(path: string, sort: FolderSortPreference) {
   if (sortApplyTimer !== null) window.clearTimeout(sortApplyTimer);
   applyingSort = true;
@@ -152,7 +162,14 @@ function applySort(path: string, sort: FolderSortPreference) {
     }
 
     const before = currentSort();
-    if (before?.column !== sort.column) cell.click();
+    if (before?.column === sort.column) {
+      if (before.direction !== sort.direction) cell.click();
+      window.setTimeout(() => finishSortRestore(path), 0);
+      return;
+    }
+
+    // Switching columns always enters ascending order first.
+    cell.click();
     if (sort.direction === "desc") {
       window.setTimeout(() => {
         if (activePath() !== path) {
@@ -161,20 +178,12 @@ function applySort(path: string, sort: FolderSortPreference) {
         }
         const afterColumn = currentSort();
         if (afterColumn?.column === sort.column && afterColumn.direction !== "desc") cell.click();
-        window.setTimeout(() => {
-          applyingSort = false;
-          sortRestorePendingPath = null;
-          lastSort = sortSignature(currentSort());
-        }, 0);
+        window.setTimeout(() => finishSortRestore(path), 0);
       }, 0);
       return;
     }
 
-    window.setTimeout(() => {
-      applyingSort = false;
-      sortRestorePendingPath = null;
-      lastSort = sortSignature(currentSort());
-    }, 0);
+    window.setTimeout(() => finishSortRestore(path), 0);
   }, 0);
 }
 
