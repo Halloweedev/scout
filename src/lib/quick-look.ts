@@ -23,7 +23,9 @@ function formatBytes(value: number | null) {
 }
 
 function selectedPath() {
-  const row = document.querySelector<HTMLElement>(".file-row.selected");
+  const row = document.querySelector<HTMLElement>(
+    ".explorer-pane.active .pane-file-row.selected, .explorer-pane.active .file-row.selected, .file-row.selected",
+  );
   if (!row) return null;
   const directPath = row.dataset.entryPath;
   if (directPath) return directPath;
@@ -274,7 +276,7 @@ function open() {
   header.append(heading, closeButton);
   content = element("div", "quick-look-content");
   const footer = element("footer", "quick-look-footer");
-  footer.append(textElement("span", "", "Space to close"), textElement("span", "", "↑ ↓ to browse"));
+  footer.append(textElement("span", "", "Space to close"), textElement("span", "", "Arrow keys to browse"));
   panel.append(header, content, footer);
   overlay.append(panel);
   overlay.addEventListener("pointerdown", (event) => {
@@ -305,13 +307,17 @@ function handleKeyDown(event: KeyboardEvent) {
   if (event.key === "Escape") {
     event.preventDefault();
     close();
-  } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+  } else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
     scheduleSelectionRefresh();
   }
 }
 
 function handleClick(event: MouseEvent) {
-  if (overlay && event.target instanceof Element && event.target.closest(".file-row")) scheduleSelectionRefresh();
+  if (
+    overlay
+    && event.target instanceof Element
+    && event.target.closest(".pane-file-row, .file-row")
+  ) scheduleSelectionRefresh();
 }
 
 export function installQuickLook() {
