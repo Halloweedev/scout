@@ -35,6 +35,8 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - The type-ahead buffer resets after a short pause.
 - Keyboard navigation maintains a visible cursor inside a multi-selection without replacing the selection state.
 - Ctrl+Tab and Ctrl+Shift+Tab cycle tabs in visual order.
+- macOS also supports Cmd+Shift+[ and Cmd+Shift+] for previous/next tab; Windows/Linux support Ctrl+PageUp and Ctrl+PageDown.
+- Scout preserves Cmd/Ctrl+1 through Cmd/Ctrl+4 for Icons, List, Columns, and Gallery view switching instead of overloading those shortcuts for numbered tabs.
 - Windows/Linux Alt+Left and Alt+Right navigate pane history; Alt+Up navigates to the parent folder.
 
 ## Focus and accessibility
@@ -44,7 +46,8 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Active file surfaces expose listbox semantics and selected entries expose `aria-selected`.
 - Keyboard interactions must not hijack text inputs, rename fields, search, or editable content.
 - Context menus expose menu/menuitem semantics and support Shift+F10 or the platform Context Menu key from the current selection.
-- Context-menu keyboard navigation uses Arrow Up/Down, Home/End, Tab/Shift+Tab cycling, Enter/Space activation, and Escape dismissal.
+- Context-menu keyboard navigation uses Arrow Up/Down, Home/End, Tab/Shift+Tab cycling, Enter/Space activation, Escape dismissal, and printable-character type-ahead.
+- The tab strip exposes tablist/tab semantics with a single roving tab stop; Arrow Left/Right and Home/End activate tabs when focus is inside the strip.
 
 ## Navigation chrome
 
@@ -52,15 +55,28 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Overflowing breadcrumb paths scroll horizontally without exposing a permanent scrollbar.
 - Wheel/trackpad input over an overflowing breadcrumb strip scrolls the path rather than clipping ancestors permanently.
 - During an internal file drag, overflowing breadcrumbs edge-scroll so hidden ancestor drop targets remain reachable.
-- Overflowing tab strips scroll horizontally and keep the active tab visible.
+- Overflowing tab strips scroll horizontally and keep the active or keyboard-focused tab visible.
 - Sidebar content scrolls vertically when locations, bookmarks, or workspaces exceed the available height.
 - The sidebar width is directly resizable, persisted, keyboard-adjustable through its separator, and resettable to the default width.
 - Multi-pane layouts expose persisted draggable splitters with keyboard-adjustable separators and a 50/50 reset.
+
+## List view columns
+
+- List view keeps Name, Modified, and Size aligned between the sticky header and file rows.
+- Each List column can be resized directly by dragging its header separator, within sensible minimum and maximum widths.
+- Column widths persist across launches and are shared across panes so side-by-side List views remain aligned.
+- A focused column separator supports Arrow Left/Right resizing, with Shift for larger steps; Enter or double-click resets the saved List widths.
+- Name, Modified, and Size headers remain sortable by pointer and are also keyboard-operable with Enter or Space.
+- Resizing List columns may make the file area horizontally scrollable rather than silently compressing metadata until it becomes unreadable.
 
 ## Menus and transient surfaces
 
 - Context menus are clamped inside the visible app viewport and become internally scrollable if their content is taller than the available space.
 - Keyboard and pointer users share the same menu actions; keyboard support does not create a second command surface.
+- Context-menu type-ahead searches the existing visible menu items and wraps from the current item rather than spawning a separate search UI.
+- Right-clicking empty folder space opens folder-level actions such as New Folder, Paste, Select All, Copy Current Folder Path, and Bookmark Current Folder.
+- Empty-space menus use the shared Actions Registry: compatible folder-level tools are enriched from the same registry rather than being duplicated in a second menu implementation.
+- Opening a folder-background menu activates that pane and clears stale item selection before folder-level actions are resolved.
 - Current-folder Search uses Escape progressively: the first Escape clears a non-empty filter and the next Escape exits the field.
 
 ## Drag and drop
@@ -98,6 +114,7 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Middle-click closes a tab.
 - Cmd/Ctrl+Shift+T reopens the most recently closed tab.
 - Double-clicking empty tab-strip space creates a new tab.
+- Focused tab-strip navigation activates the target tab immediately, matching Scout's direct tab-switching model rather than maintaining a separate focus-only selection.
 
 ## Operations feedback
 
@@ -123,3 +140,5 @@ UX & Interaction 1.0 established selection, keyboard navigation, opening/renamin
 UX & Interaction 2.0 adds destination-aware drag/drop, spring-loaded folders, draggable tab ordering, live operation feedback, and immediate undo/redo feedback on top of Scout's existing filesystem, Operations, and Footprints backends.
 
 UX & Interaction 3.0 adds scalable navigation chrome: overflow-safe tabs/sidebar/breadcrumbs, resizable sidebar and pane layouts, Quick Look spatial parity, and keyboard-native viewport-safe context menus.
+
+UX & Interaction 4.0 adds dense daily-driver controls without new backend systems: persisted resizable List columns, keyboard-sortable headers, registry-backed folder-background actions, menu type-ahead, and complete tab-strip keyboard semantics with conflict-free platform shortcuts.
