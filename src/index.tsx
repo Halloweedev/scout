@@ -41,6 +41,7 @@ import { installSidebarDropTargets } from "./lib/sidebar-drop-targets";
 import { installSidebarResize } from "./lib/sidebar-resize";
 import { installSimilarPhotos } from "./lib/similar-photos";
 import { installSmartExtract } from "./lib/smart-extract";
+import { installTabAccessibility } from "./lib/tab-accessibility";
 import { installTabDrag } from "./lib/tab-drag";
 import { installTabDropTargets } from "./lib/tab-drop-targets";
 import { installTabKeyboardNavigation } from "./lib/tab-keyboard-navigation";
@@ -89,6 +90,7 @@ import "./pane-resize.css";
 import "./breadcrumb-scroll.css";
 import "./context-menu-keyboard.css";
 import "./list-column-resize.css";
+import "./tab-accessibility.css";
 
 const root = document.getElementById("root");
 
@@ -120,6 +122,7 @@ const sidebarDropTargetsCleanup = installSidebarDropTargets();
 const paneResizeCleanup = installPaneResize();
 const tabDropTargetsCleanup = installTabDropTargets();
 const tabKeyboardNavigationCleanup = installTabKeyboardNavigation();
+const tabAccessibilityCleanup = installTabAccessibility();
 const tabScrollCleanup = installTabScroll();
 const dragAutoscrollCleanup = installDragAutoscroll();
 const nativeDropCleanup = installNativeFileDrop();
@@ -153,6 +156,7 @@ if (import.meta.hot) {
     internalDragCleanup();
     dragAutoscrollCleanup();
     tabScrollCleanup();
+    tabAccessibilityCleanup();
     tabKeyboardNavigationCleanup();
     tabDragCleanup();
     quickLookCleanup();
