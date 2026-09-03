@@ -33,8 +33,22 @@ function toast(message: string) {
   window.dispatchEvent(new CustomEvent("scout:toast", { detail: { message } }));
 }
 
+function refreshAmbient() {
+  window.dispatchEvent(new CustomEvent("scout:git-refresh"));
+}
+
 function sourcePath(context: ScoutActionContext) {
   return context.selection[0]?.path ?? context.panePath;
+}
+
+function selectedStates(context: ScoutActionContext) {
+  return context.selection.map((entry) => entry.gitState).filter((state): state is string => !!state);
+}
+
+function selectionMatches(context: ScoutActionContext, allowed: Set<string>) {
+  if (!context.selection.length) return false;
+  const states = selectedStates(context);
+  return states.length === context.selection.length && states.every((state) => allowed.has(state));
 }
 
 function closeDiff() {
@@ -142,6 +156,7 @@ async function mutate(command: "git_stage" | "git_unstage" | "git_discard", path
   await invoke(command, { paths });
   const label = command === "git_stage" ? "Staged" : command === "git_unstage" ? "Unstaged" : "Discarded working-tree changes for";
   toast(`${label} ${paths.length === 1 ? "item" : `${paths.length} items`}`);
+  refreshAmbient();
   await refresh();
 }
 
@@ -320,6 +335,10 @@ function openGitStatus(context: ScoutActionContext) {
   void refreshRepository(body, path);
 }
 
+const stageableStates = new Set(["modified", "mixed", "untracked", "conflict", "nested"]);
+const stagedStates = new Set(["staged", "mixed"]);
+const diffableStates = new Set(["modified", "mixed", "conflict"]);
+
 export function installGitIntegration() {
   const cleanup = registerActions([
     {
@@ -336,7 +355,9 @@ export function installGitIntegration() {
       title: "Show Git Diff",
       category: "Developer",
       keywords: ["git", "diff", "changes", "developer"],
-      available: (context) => context.selection.length === 1 && context.selection[0].kind !== "directory",
+      contextMenu: true,
+      contextMenuOrder: 81,
+      available: (context) => context.selection.length === 1 && context.selection[0].kind !== "directory" && selectionMatches(context, diffableStates),
       run: (context) => openDiff(context.selection[0].path, false),
     },
     {
@@ -344,10 +365,13 @@ export function installGitIntegration() {
       title: "Stage with Git",
       category: "Developer",
       keywords: ["git", "add", "stage", "index"],
-      available: (context) => context.selectedPaths.length > 0,
+      contextMenu: true,
+      contextMenuOrder: 82,
+      available: (context) => selectionMatches(context, stageableStates),
       run: async (context) => {
         await invoke("git_stage", { paths: context.selectedPaths });
         toast(context.selectedPaths.length === 1 ? "Staged item" : `Staged ${context.selectedPaths.length} items`);
+        refreshAmbient();
       },
     },
     {
@@ -355,10 +379,13 @@ export function installGitIntegration() {
       title: "Unstage with Git",
       category: "Developer",
       keywords: ["git", "restore", "unstage", "index"],
-      available: (context) => context.selectedPaths.length > 0,
+      contextMenu: true,
+      contextMenuOrder: 83,
+      available: (context) => selectionMatches(context, stagedStates),
       run: async (context) => {
         await invoke("git_unstage", { paths: context.selectedPaths });
         toast(context.selectedPaths.length === 1 ? "Unstaged item" : `Unstaged ${context.selectedPaths.length} items`);
+        refreshAmbient();
       },
     },
     {
@@ -367,12 +394,15 @@ export function installGitIntegration() {
       category: "Developer",
       subtitle: "Restore selected tracked files from the Git index",
       keywords: ["git", "discard", "restore", "revert", "working tree"],
+      contextMenu: true,
+      contextMenuOrder: 84,
       danger: true,
-      available: (context) => context.selectedPaths.length > 0,
+      available: (context) => selectionMatches(context, diffableStates),
       run: async (context) => {
         if (!window.confirm(`Discard uncommitted working-tree changes for ${context.selectedPaths.length === 1 ? "the selected item" : `${context.selectedPaths.length} selected items`}?`)) return;
         await invoke("git_discard", { paths: context.selectedPaths });
         toast("Discarded working-tree changes");
+        refreshAmbient();
       },
     },
   ]);
