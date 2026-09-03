@@ -1,6 +1,5 @@
 const MEMORY_LIMIT = 180;
 const RESTORE_DELAY_MS = 56;
-const MAX_RESTORE_ATTEMPTS = 8;
 
 type ViewMode = "icons" | "list" | "columns" | "gallery";
 
@@ -127,7 +126,7 @@ function finishRestore(pane: HTMLElement, state: FolderViewMemory, mode: ViewMod
   scheduleCapture(0);
 }
 
-function restoreKey(expectedKey: string, attempt = 0) {
+function restoreKey(expectedKey: string) {
   if (restoreTimer !== undefined) window.clearTimeout(restoreTimer);
   restoreTimer = window.setTimeout(() => {
     restoreTimer = undefined;
@@ -143,17 +142,13 @@ function restoreKey(expectedKey: string, attempt = 0) {
     const mode = viewMode(pane);
     const area = pane.querySelector<HTMLElement>(".file-area");
     const target = scrollTarget(pane, mode);
-    const waitingForRows = mode !== "columns"
-      && state.selectedPaths.length > 0
-      && !pane.querySelector(".file-area .pane-file-row[data-entry-path]:not(.column-browser-row)");
-    const stillLoading = !!area?.classList.contains("loading") || !target || waitingForRows;
 
-    if (stillLoading && attempt < MAX_RESTORE_ATTEMPTS) {
-      restoreKey(expectedKey, attempt + 1);
-      return;
-    }
+    // Do not use a short polling deadline here. Cloud/network folders can stay in
+    // the loading state for much longer than a local folder. Keeping the restore
+    // pending lets the DOM observer retry when loading/render state actually changes.
+    if (area?.classList.contains("loading") || !target) return;
     finishRestore(pane, state, mode);
-  }, attempt === 0 ? RESTORE_DELAY_MS : 48);
+  }, RESTORE_DELAY_MS);
 }
 
 function syncActiveLocation() {
@@ -166,7 +161,11 @@ function syncActiveLocation() {
     restoreKey(nextKey);
     return;
   }
-  if (!restorePending) scheduleCapture(0);
+  if (restorePending) {
+    if (restoreTimer === undefined) restoreKey(nextKey);
+    return;
+  }
+  scheduleCapture(0);
 }
 
 function scheduleSync() {
