@@ -8,6 +8,7 @@ import { installConversionRecipes } from "./lib/conversion-recipes";
 import { installConverters } from "./lib/converters";
 import { installCustomActions } from "./lib/custom-actions";
 import { installDiskMap } from "./lib/disk-map";
+import { installDragAutoscroll } from "./lib/drag-autoscroll";
 import { installDuplicateFinder } from "./lib/duplicates";
 import { installFileHealth } from "./lib/file-health";
 import { installFootprints } from "./lib/footprints";
@@ -90,6 +91,7 @@ const gitAmbientCleanup = installGitAmbient();
 const mouseNavigationCleanup = installMouseNavigation();
 const sidebarDropTargetsCleanup = installSidebarDropTargets();
 const tabDropTargetsCleanup = installTabDropTargets();
+const dragAutoscrollCleanup = installDragAutoscroll();
 const nativeDropCleanup = installNativeFileDrop();
 const internalDragCleanup = installInternalPointerDrag();
 const tabDragCleanup = installTabDrag();
@@ -119,6 +121,7 @@ const automationLiveCleanup = installAutomationLive();
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     internalDragCleanup();
+    dragAutoscrollCleanup();
     tabDragCleanup();
     quickLookCleanup();
     uxInteractionsCleanup();
