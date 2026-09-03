@@ -83,9 +83,14 @@ fn repository_root(path: &Path) -> Result<Option<PathBuf>, String> {
 }
 
 fn relative_to_root(root: &Path, path: &Path) -> Result<String, String> {
-    path.strip_prefix(root)
-        .map(path_string)
-        .map_err(|_| format!("{} is outside the Git repository", path.display()))
+    let relative = path
+        .strip_prefix(root)
+        .map_err(|_| format!("{} is outside the Git repository", path.display()))?;
+    if relative.as_os_str().is_empty() {
+        Ok(".".into())
+    } else {
+        Ok(path_string(relative))
+    }
 }
 
 fn branch_name(root: &Path) -> Result<String, String> {
@@ -258,7 +263,8 @@ pub fn git_discard(paths: Vec<String>) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_porcelain;
+    use super::{parse_porcelain, relative_to_root};
+    use std::path::Path;
 
     #[test]
     fn parses_staged_modified_untracked_and_renamed_status() {
@@ -275,5 +281,14 @@ mod tests {
         assert!(untracked.untracked);
         let renamed = files.iter().find(|item| item.path == "new.txt").unwrap();
         assert_eq!(renamed.status, "R ");
+    }
+
+    #[test]
+    fn repository_root_pathspec_is_dot() {
+        assert_eq!(relative_to_root(Path::new("repo"), Path::new("repo")).unwrap(), ".");
+        assert_eq!(
+            relative_to_root(Path::new("repo"), Path::new("repo/src/main.rs")).unwrap(),
+            Path::new("src/main.rs").to_string_lossy()
+        );
     }
 }
