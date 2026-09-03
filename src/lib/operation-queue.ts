@@ -4,6 +4,7 @@ export interface OperationJob<T = unknown> {
   id: number;
   kind: string;
   label: string;
+  priority: "foreground" | "background";
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
   progress: number | null;
   detail: string | null;
@@ -86,6 +87,14 @@ function statusLabel(job: OperationJob) {
   return job.status[0].toUpperCase() + job.status.slice(1);
 }
 
+function operationDetail(job: OperationJob) {
+  if (job.error) return job.error;
+  if (job.detail) return job.detail;
+  if (job.status === "queued" && job.priority === "background") return "Background · Waiting for capacity";
+  if (job.status === "queued") return "Waiting for capacity";
+  return job.kind;
+}
+
 function renderPanel() {
   if (!panel) return;
   const body = panel.querySelector<HTMLElement>(".operation-queue-body");
@@ -111,7 +120,7 @@ function renderPanel() {
     top.append(label, status);
 
     const detail = element("div", "operation-job-detail");
-    detail.textContent = job.error ?? job.detail ?? job.kind;
+    detail.textContent = operationDetail(job);
     row.append(top, detail);
 
     if ((job.status === "queued" || job.status === "running") && job.progress != null) {
@@ -243,7 +252,7 @@ function renderHud() {
   const detail = element("span", "operation-hud-detail");
 
   if (active) {
-    if (job.status === "queued") detail.textContent = "Waiting…";
+    if (job.status === "queued") detail.textContent = job.priority === "background" ? "Background · Waiting…" : "Waiting…";
     else if (job.progress != null) detail.textContent = `${Math.round(job.progress * 100)}%${job.detail ? ` · ${job.detail}` : ""}`;
     else detail.textContent = job.detail ?? "Working…";
   } else if (job.status === "completed") {
