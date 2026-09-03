@@ -17,6 +17,7 @@ mod queue;
 mod scripts;
 mod search;
 mod similar;
+mod tag_collections;
 mod tags;
 mod terminal;
 mod utilities;
@@ -95,6 +96,8 @@ pub fn run() {
             search::record_index_open,
             similar::find_similar_photos,
             similar::enqueue_similar_photo_scan,
+            tag_collections::tag_collections,
+            tag_collections::paths_for_tag,
             tags::tags_for_paths,
             tags::add_tags,
             tags::remove_tags,
