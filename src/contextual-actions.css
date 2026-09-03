@@ -1,0 +1,221 @@
+.contextual-action-bar[hidden] {
+  display: none !important;
+}
+
+.workspace > .contextual-action-bar {
+  position: relative;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 38px;
+  padding: 5px 10px 5px 12px;
+  border-bottom: 1px solid #202023;
+  background: rgba(15, 15, 16, 0.94);
+}
+
+.contextual-action-selection {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  max-width: min(32vw, 320px);
+}
+
+.contextual-action-count {
+  flex: 0 0 auto;
+  color: #77777d;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.contextual-action-name {
+  min-width: 0;
+  overflow: hidden;
+  color: #d9d9dc;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contextual-action-quick {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.contextual-action-quick::-webkit-scrollbar {
+  display: none;
+}
+
+.contextual-action-button,
+.contextual-action-more {
+  flex: 0 0 auto;
+  height: 27px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #a9a9ae;
+  font-size: 10px;
+  font-weight: 590;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.contextual-action-button:hover,
+.contextual-action-more:hover {
+  border-color: #29292d;
+  background: #1b1b1e;
+  color: #efeff1;
+}
+
+.contextual-action-button:active,
+.contextual-action-more:active {
+  background: #242428;
+}
+
+.contextual-action-button.danger {
+  color: #b88181;
+}
+
+.contextual-action-button.danger:hover {
+  border-color: rgba(174, 88, 88, 0.28);
+  background: rgba(103, 43, 43, 0.2);
+  color: #d79a9a;
+}
+
+.contextual-action-more {
+  margin-left: 2px;
+  border-color: #252529;
+  background: #18181b;
+  color: #b8b8bd;
+}
+
+.contextual-action-menu {
+  position: fixed;
+  z-index: 90;
+  display: grid;
+  width: min(330px, calc(100vw - 16px));
+  max-height: min(560px, calc(100vh - 16px));
+  padding: 6px;
+  overflow-y: auto;
+  border: 1px solid #303034;
+  border-radius: 11px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.52), inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  overscroll-behavior: contain;
+}
+
+.contextual-action-menu-heading {
+  padding: 7px 9px 4px;
+  color: #616167;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.contextual-action-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 31px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #d0d0d4;
+  text-align: left;
+  cursor: default;
+}
+
+.contextual-action-menu-item:hover,
+.contextual-action-menu-item:focus-visible {
+  outline: none;
+  background: #242428;
+  color: #ffffff;
+}
+
+.contextual-action-menu-item.danger {
+  color: #c38787;
+}
+
+.contextual-action-menu-item.danger:hover,
+.contextual-action-menu-item.danger:focus-visible {
+  background: rgba(105, 45, 45, 0.25);
+  color: #e0a1a1;
+}
+
+.contextual-action-menu-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 540;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contextual-action-shortcut {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #66666c;
+  font: inherit;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.contextual-action-menu-footer {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid #29292d;
+}
+
+.contextual-action-menu-item.all-commands {
+  color: #a9a9ae;
+}
+
+@media (max-width: 820px) {
+  .contextual-action-selection {
+    max-width: 150px;
+  }
+
+  .contextual-action-name {
+    display: none;
+  }
+
+  .contextual-action-button {
+    padding-inline: 7px;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .workspace > .contextual-action-bar {
+    animation: contextual-action-bar-in 120ms ease-out;
+  }
+
+  .contextual-action-menu {
+    animation: contextual-action-menu-in 110ms ease-out;
+    transform-origin: top right;
+  }
+}
+
+@keyframes contextual-action-bar-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes contextual-action-menu-in {
+  from { opacity: 0; transform: translateY(-3px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
