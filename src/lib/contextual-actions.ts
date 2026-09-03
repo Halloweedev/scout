@@ -27,7 +27,7 @@ const QUICK_MULTI = [
 ];
 
 const CONTEXT_CATEGORIES = new Set<ScoutActionCategory>(["File", "Selection", "Tools", "Developer"]);
-const CATEGORY_ORDER: ScoutActionCategory[] = ["File", "Selection", "Tools", "Developer"];
+const CATEGORY_ORDER: ScoutActionCategory[] = ["File", "Navigation", "Tabs", "Selection", "Tools", "Developer"];
 const SHORT_LABELS: Record<string, string> = {
   "file.quick-look": "Quick Look",
   "file.open-new-tab": "New Tab",
@@ -64,8 +64,10 @@ function contextualActions(context: ScoutActionContext) {
   if (!context.selectedPaths.length) return [];
   return availableActions(context)
     .filter((action) => {
-      if (!CONTEXT_CATEGORIES.has(action.category)) return false;
+      // Explicit context-menu actions are relevant to the current selection even
+      // when they live in Tabs/Navigation rather than the bar's fallback groups.
       if (action.contextMenu) return true;
+      if (!CONTEXT_CATEGORIES.has(action.category)) return false;
       if (QUICK_SINGLE.includes(action.id) || QUICK_MULTI.includes(action.id)) return true;
       return action.category === "Tools" || action.category === "Developer";
     })
