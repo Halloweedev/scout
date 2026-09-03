@@ -167,16 +167,19 @@ function queueReconcile() {
   queueMicrotask(reconcile);
 }
 
-function persistMove(kind: SidebarOrderKind, draggedId: string, targetId: string | null, after: boolean) {
+function persistMove(kind: SidebarOrderKind, draggedId: string, targetId: string, after: boolean) {
   const state = readOrder();
-  const ordered = normalizedIds(kind, state[kind]).filter((id) => id !== draggedId);
-  let index = targetId ? ordered.indexOf(targetId) : -1;
-  if (index < 0) index = ordered.length;
-  else if (after) index += 1;
+  const before = normalizedIds(kind, state[kind]);
+  const ordered = before.filter((id) => id !== draggedId);
+  let index = ordered.indexOf(targetId);
+  if (index < 0) return false;
+  if (after) index += 1;
   ordered.splice(index, 0, draggedId);
+  if (ordered.join("\u0000") === before.join("\u0000")) return false;
   state[kind] = ordered;
   writeOrder(state);
   applyOrder(kind, false);
+  return true;
 }
 
 function clearDropHints() {
@@ -246,24 +249,36 @@ function handlePointerDown(event: PointerEvent) {
     }
   };
 
-  const finish = (up: PointerEvent) => {
-    if (up.pointerId !== event.pointerId) return;
+  const cleanup = () => {
     window.removeEventListener("pointermove", pointerMove, true);
     window.removeEventListener("pointerup", finish, true);
-    window.removeEventListener("pointercancel", finish, true);
+    window.removeEventListener("pointercancel", cancel, true);
     row.classList.remove("scout-sidebar-order-dragging");
     document.body.classList.remove("scout-sidebar-order-active");
     clearDropHints();
+  };
+
+  const finish = (up: PointerEvent) => {
+    if (up.pointerId !== event.pointerId) return;
+    cleanup();
     if (!dragging) return;
+    // An attempted drag must not fall through into the row's normal click.
     suppressClickUntil = performance.now() + 250;
-    persistMove(kind, draggedId, hoverRow?.dataset.scoutSidebarOrderId ?? null, hoverAfter);
+    const targetId = hoverRow?.dataset.scoutSidebarOrderId;
+    if (!targetId) return;
+    if (!persistMove(kind, draggedId, targetId, hoverAfter)) return;
     const label = row.querySelector<HTMLElement>(".workspace-open")?.textContent?.trim() || (kind === "bookmarks" ? "Bookmark" : "Workspace");
     toast(`Reordered ${label}`);
   };
 
+  const cancel = (cancelEvent: PointerEvent) => {
+    if (cancelEvent.pointerId !== event.pointerId) return;
+    cleanup();
+  };
+
   window.addEventListener("pointermove", pointerMove, true);
   window.addEventListener("pointerup", finish, true);
-  window.addEventListener("pointercancel", finish, true);
+  window.addEventListener("pointercancel", cancel, true);
 }
 
 function handleClick(event: MouseEvent) {
@@ -291,7 +306,7 @@ function handleKeyDown(event: KeyboardEvent) {
   event.preventDefault();
   event.stopImmediatePropagation();
   const targetId = ordered[nextIndex];
-  persistMove(kind, id, targetId, event.key === "ArrowDown");
+  if (!persistMove(kind, id, targetId, event.key === "ArrowDown")) return;
   queueMicrotask(() => {
     const moved = rowsFor(kind).find((candidate) => candidate.dataset.scoutSidebarOrderId === id);
     moved?.querySelector<HTMLElement>(".workspace-open")?.focus({ preventScroll: true });
