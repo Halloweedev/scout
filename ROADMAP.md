@@ -11,7 +11,7 @@
 - [x] Filesystem watcher with debounced active-directory refresh
 - [x] Hidden files
 - [x] Cross-platform pointer drag/drop between folders
-- [x] Native OS file drops copy into the active folder
+- [x] Native OS file drops route to the hovered folder, pane, tab, sidebar destination, Portal, or native Trash target
 - [x] Proper keyboard selection
 - [x] Context menus
 - [x] Tabs
@@ -133,6 +133,9 @@ M7's implementation baseline is complete. Scout is intentionally developer-aware
 - [x] Platform-aware open/rename shortcuts
 - [x] Mouse back/forward buttons mapped to Scout pane history
 - [x] Native Alt+Left/Right pane-history navigation on Windows and Linux
+- [x] Middle-click and Cmd/Ctrl-click navigation chrome opens breadcrumbs and sidebar folders in new tabs
+- [x] Cmd/Ctrl+Shift+T recovery for recently closed tabs
+- [x] Double-click empty tab-strip space to create a tab
 - [x] Selection restoration after same-folder mutations
 - [x] Focus and accessibility semantics
 
@@ -143,7 +146,11 @@ M7's implementation baseline is complete. Scout is intentionally developer-aware
 - [x] Spring-loaded folders while dragging
 - [x] Breadcrumb ancestors as direct Move/Copy drop destinations
 - [x] Places, writable Locations, and Bookmarks as direct Move/Copy sidebar destinations
+- [x] Spring-loaded sidebar destinations that navigate without ending the drag
+- [x] Tabs as Move/Copy destinations with spring-switching while dragging
 - [x] Native Trash semantics when dropping items onto the Trash sidebar target
+- [x] Edge auto-scroll during internal drags, including vertical column scrolling and horizontal Miller Columns scrolling
+- [x] Native OS drag/drop resolves the actual hovered Scout destination with targeted feedback and spring navigation
 - [x] Direct tab drag/reordering with visible-order close behavior
 - [x] Middle-click tab closing
 - [x] Compact live Operations HUD with progress and terminal states
