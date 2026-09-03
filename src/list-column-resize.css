@@ -1,0 +1,56 @@
+.file-area.scout-list-columns-fixed .file-header,
+.file-area.scout-list-columns-fixed .pane-file-row:not(.column-browser-row) {
+  grid-template-columns:
+    var(--scout-list-name-width, 320px)
+    var(--scout-list-modified-width, 150px)
+    var(--scout-list-size-width, 86px);
+  min-width: calc(
+    var(--scout-list-name-width, 320px) +
+    var(--scout-list-modified-width, 150px) +
+    var(--scout-list-size-width, 86px)
+  );
+}
+
+.file-header .scout-list-column-header {
+  position: relative;
+  min-width: 0;
+}
+
+.scout-list-column-resizer {
+  position: absolute;
+  z-index: 4;
+  top: -2px;
+  right: -5px;
+  bottom: -2px;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.scout-list-column-resizer::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 4px;
+  width: 1px;
+  background: transparent;
+  transition: background 100ms ease, box-shadow 100ms ease;
+}
+
+.scout-list-column-resizer:hover::after,
+.scout-list-column-resizer:focus-visible::after,
+.scout-list-column-resizer[aria-grabbed="true"]::after {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.scout-list-column-resizer:focus-visible::after {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.06);
+}
+
+body.scout-list-column-resizing,
+body.scout-list-column-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
