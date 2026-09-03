@@ -91,6 +91,23 @@ M5's implementation baseline is complete. Streaming and external-process jobs su
 
 Native Trash is intentionally excluded from undo until Scout can restore trashed items reliably across macOS, Windows, and Linux.
 
+## M6 — Productivity and interaction
+
+- [x] Shared Actions Registry as the single command surface for file, navigation, selection, tab, view, tool, workspace, and developer actions
+- [x] Cmd/Ctrl+K Command Palette with fuzzy matching, contextual availability, shortcuts, and recency/frequency ranking
+- [x] Registry-backed context-menu actions across core utilities and power tools
+- [x] Inspector with previews, metadata, tags, location, and registry-backed quick actions
+- [x] QoL action packs for path/name copying, selection helpers, pane transfers, tab cleanup, symlinks, permanent delete, and IDE launchers
+- [x] Per-folder view preferences and Adaptive View
+- [x] Search 2.0 with deep indexed search and existing saved-search workflows
+- [x] File Health analysis through Operations
+- [x] Tag Smart Collections in navigation/sidebar workflows
+- [x] Smart Extract for ZIP archives
+- [x] Quick conversion recipes and user-defined custom actions
+- [x] Foreground/background Operations scheduling with foreground priority, bounded concurrency, and queued cancellation
+
+M6's implementation baseline is complete. Scout's power features now converge on the Actions Registry and shared Operations system instead of adding isolated command surfaces or unbounded background work.
+
 ## UX & Interaction
 
 ### UX 1 — Selection and navigation
