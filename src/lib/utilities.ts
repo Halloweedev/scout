@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { registerActions } from "./actions";
 import { enqueueAndWait } from "./operation-queue";
 
 interface ChecksumResult {
@@ -21,7 +22,6 @@ interface ArchiveOperationResult {
   entries: number;
 }
 
-let observer: MutationObserver | null = null;
 let overlay: HTMLDivElement | null = null;
 let toast: HTMLDivElement | null = null;
 let renameTimer: number | undefined;
@@ -270,36 +270,6 @@ async function extractZip() {
   }
 }
 
-function menuButton(label: string, action: () => void) {
-  const button = element("button");
-  button.type = "button";
-  button.textContent = label;
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    action();
-    document.querySelector<HTMLElement>(".context-menu")?.remove();
-  });
-  return button;
-}
-
-function enhanceContextMenu(menu: HTMLElement) {
-  if (menu.dataset.utilitiesEnhanced === "1") return;
-  menu.dataset.utilitiesEnhanced = "1";
-  const paths = selectedPaths();
-  if (!paths.length) return;
-
-  const separator = element("div", "menu-separator utility-menu-separator");
-  menu.append(separator);
-  if (selectedAreFiles()) menu.append(menuButton("SHA-256 Checksum", () => void openChecksums()));
-  if (paths.length > 1) menu.append(menuButton("Batch Rename…", openBatchRename));
-  menu.append(menuButton("Compress to ZIP", () => void createZip()));
-  if (selectedIsSingleZip()) menu.append(menuButton("Extract ZIP Here", () => void extractZip()));
-}
-
-function reconcileMenus() {
-  for (const menu of document.querySelectorAll<HTMLElement>(".context-menu")) enhanceContextMenu(menu);
-}
-
 function handleKeyDown(event: KeyboardEvent) {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
   const modifier = event.metaKey || event.ctrlKey;
@@ -315,12 +285,53 @@ function handleKeyDown(event: KeyboardEvent) {
 }
 
 export function installUtilities() {
-  observer = new MutationObserver(reconcileMenus);
-  observer.observe(document.body, { childList: true, subtree: true });
+  const unregister = registerActions([
+    {
+      id: "utilities.checksum",
+      title: "Calculate SHA-256 Checksums",
+      category: "Tools",
+      shortcut: `${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+"}⇧H`,
+      keywords: ["hash", "checksum", "sha256", "integrity"],
+      contextMenu: true,
+      contextMenuOrder: 90,
+      available: (context) => context.selection.length > 0 && context.selection.every((entry) => entry.kind === "file"),
+      run: () => openChecksums(),
+    },
+    {
+      id: "utilities.batch-rename",
+      title: "Batch Rename…",
+      category: "Tools",
+      shortcut: `${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+"}⇧R`,
+      keywords: ["rename", "bulk", "sequence", "template"],
+      contextMenu: true,
+      contextMenuOrder: 91,
+      available: (context) => context.selection.length > 1,
+      run: () => openBatchRename(),
+    },
+    {
+      id: "utilities.compress-zip",
+      title: "Compress to ZIP",
+      category: "Tools",
+      keywords: ["archive", "zip", "compress"],
+      contextMenu: true,
+      contextMenuOrder: 92,
+      available: (context) => context.selectedPaths.length > 0 && !!context.panePath,
+      run: () => createZip(),
+    },
+    {
+      id: "utilities.extract-zip",
+      title: "Extract ZIP Here",
+      category: "Tools",
+      keywords: ["archive", "zip", "unpack", "extract"],
+      contextMenu: true,
+      contextMenuOrder: 93,
+      available: (context) => context.selection.length === 1 && context.selection[0].extension?.toLocaleLowerCase() === "zip" && !!context.panePath,
+      run: () => extractZip(),
+    },
+  ]);
   window.addEventListener("keydown", handleKeyDown, true);
   return () => {
-    observer?.disconnect();
-    observer = null;
+    unregister();
     window.removeEventListener("keydown", handleKeyDown, true);
     closeOverlay();
     toast?.remove();
