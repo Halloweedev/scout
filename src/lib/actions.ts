@@ -5,6 +5,7 @@ export interface ScoutActionEntry {
   name: string;
   kind: string;
   extension: string | null;
+  gitState?: string;
 }
 
 export interface ScoutActionContext {
@@ -44,6 +45,7 @@ function rowEntry(row: HTMLElement): ScoutActionEntry | null {
     name: row.dataset.entryName || path.split(/[\\/]/).filter(Boolean).at(-1) || path,
     kind: row.dataset.entryKind || "other",
     extension: row.dataset.entryExtension || null,
+    gitState: row.dataset.gitState || undefined,
   };
 }
 
