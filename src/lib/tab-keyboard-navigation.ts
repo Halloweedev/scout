@@ -15,38 +15,35 @@ function cycleTab(direction: 1 | -1) {
   const activeIndex = ordered.findIndex((tab) => tab.classList.contains("active"));
   if (activeIndex < 0) return false;
   const nextIndex = (activeIndex + direction + ordered.length) % ordered.length;
-  ordered[nextIndex]?.click();
+  const next = ordered[nextIndex];
+  if (!next) return false;
+  next.click();
+  next.scrollIntoView({ block: "nearest", inline: "nearest" });
   return true;
 }
 
-function activateNumberedTab(digit: number) {
-  const ordered = tabs();
-  if (!ordered.length) return false;
-  const index = digit === 9 ? ordered.length - 1 : digit - 1;
-  const tab = ordered[index];
-  if (!tab) return false;
-  tab.click();
-  tab.scrollIntoView({ block: "nearest", inline: "nearest" });
-  return true;
+function requestedDirection(event: KeyboardEvent): 1 | -1 | null {
+  if (event.ctrlKey && !event.metaKey && !event.altKey && event.key === "Tab") {
+    return event.shiftKey ? -1 : 1;
+  }
+
+  if (isMac && event.metaKey && event.shiftKey && !event.ctrlKey && !event.altKey) {
+    if (event.code === "BracketLeft") return -1;
+    if (event.code === "BracketRight") return 1;
+  }
+
+  if (!isMac && event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+    if (event.key === "PageUp") return -1;
+    if (event.key === "PageDown") return 1;
+  }
+
+  return null;
 }
 
 function handleKeyDown(event: KeyboardEvent) {
   if (isEditableTarget(event.target)) return;
-
-  if (event.ctrlKey && !event.metaKey && !event.altKey && event.key === "Tab") {
-    if (!cycleTab(event.shiftKey ? -1 : 1)) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    return;
-  }
-
-  const numberedModifier = isMac
-    ? event.metaKey && !event.ctrlKey && !event.altKey
-    : event.ctrlKey && !event.metaKey && !event.altKey;
-  if (!numberedModifier || event.shiftKey) return;
-  const match = /^Digit([1-9])$/.exec(event.code);
-  if (!match) return;
-  if (!activateNumberedTab(Number(match[1]))) return;
+  const direction = requestedDirection(event);
+  if (!direction || !cycleTab(direction)) return;
   event.preventDefault();
   event.stopImmediatePropagation();
 }
