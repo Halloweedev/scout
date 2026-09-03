@@ -1,7 +1,8 @@
+import { registerActions, runAction } from "./actions";
 import { copyEntries, moveEntries, openEntry } from "./fs";
 
 const STORAGE_KEY = "scout:portal:v1";
-let observer: MutationObserver | null = null;
+let mountObserver: MutationObserver | null = null;
 let panel: HTMLDivElement | null = null;
 let sidebarButton: HTMLButtonElement | null = null;
 let paths: string[] = [];
@@ -31,12 +32,6 @@ function activeDirectory() {
   return document.querySelector<HTMLElement>(".explorer-pane.active")?.dataset.panePath ?? null;
 }
 
-function selectedPaths() {
-  return [...document.querySelectorAll<HTMLElement>(".explorer-pane.active .pane-file-row.selected")]
-    .map((row) => row.dataset.entryPath)
-    .filter((path): path is string => !!path);
-}
-
 function baseName(path: string) {
   return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 }
@@ -48,8 +43,7 @@ function updateBadge() {
   sidebarButton.classList.toggle("has-items", paths.length > 0);
 }
 
-function addSelection() {
-  const next = selectedPaths();
+function addPaths(next: string[]) {
   if (!next.length) return;
   const seen = new Set(paths);
   for (const path of next) {
@@ -107,7 +101,7 @@ function renderPanel() {
   for (const path of paths) {
     const row = element("div", "portal-row");
     row.draggable = true;
-    (row as HTMLElement & { dataset: DOMStringMap }).dataset.portalPath = path;
+    row.dataset.portalPath = path;
     row.addEventListener("dragstart", (e) => {
       const dt = (e as DragEvent).dataTransfer;
       if (dt) {
@@ -200,25 +194,8 @@ function installSidebarButton() {
   updateBadge();
 }
 
-function enhanceMenu(menu: HTMLElement) {
-  if (menu.dataset.portalEnhanced === "1") return;
-  menu.dataset.portalEnhanced = "1";
-  if (!selectedPaths().length) return;
-  const separator = element("div", "menu-separator portal-menu-separator");
-  const button = element("button");
-  button.type = "button";
-  button.textContent = "Add to Portal";
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    addSelection();
-    menu.remove();
-  });
-  menu.append(separator, button);
-}
-
-function reconcile() {
+function reconcileMount() {
   installSidebarButton();
-  for (const menu of document.querySelectorAll<HTMLElement>(".context-menu")) enhanceMenu(menu);
 }
 
 function handleKeyDown(event: KeyboardEvent) {
@@ -227,14 +204,40 @@ function handleKeyDown(event: KeyboardEvent) {
   if (modifier && event.shiftKey && event.key.toLowerCase() === "p") {
     event.preventDefault();
     event.stopImmediatePropagation();
-    openPanel();
+    void runAction("tools.portal").catch((error) => {
+      window.dispatchEvent(new CustomEvent("scout:action-error", {
+        detail: { message: error instanceof Error ? error.message : String(error) },
+      }));
+    });
   }
 }
 
 export function installPortal() {
   loadPaths();
-  observer = new MutationObserver(reconcile);
-  observer.observe(document.body, { childList: true, subtree: true });
+  const unregister = registerActions([
+    {
+      id: "tools.portal-add",
+      title: "Add to Portal",
+      category: "Tools",
+      keywords: ["portal", "collect", "shelf", "staging", "copy later", "move later"],
+      contextMenu: true,
+      contextMenuOrder: 140,
+      available: (context) => context.selectedPaths.length > 0,
+      run: (context) => addPaths(context.selectedPaths),
+    },
+    {
+      id: "tools.portal",
+      title: "Open Portal",
+      category: "Tools",
+      shortcut: `${/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+"}⇧P`,
+      keywords: ["portal", "collect", "shelf", "staging"],
+      available: () => true,
+      run: () => openPanel(),
+    },
+  ]);
+
+  mountObserver = new MutationObserver(reconcileMount);
+  mountObserver.observe(document.body, { childList: true, subtree: true });
   window.addEventListener("keydown", handleKeyDown, true);
   const handlePortalUpdate = () => {
     loadPaths();
@@ -243,10 +246,11 @@ export function installPortal() {
   };
   window.addEventListener("scout:portal-updated", handlePortalUpdate);
   window.addEventListener("scout:reconcile-portal", handlePortalUpdate as EventListener);
-  queueMicrotask(reconcile);
+  queueMicrotask(reconcileMount);
   return () => {
-    observer?.disconnect();
-    observer = null;
+    unregister();
+    mountObserver?.disconnect();
+    mountObserver = null;
     window.removeEventListener("keydown", handleKeyDown, true);
     window.removeEventListener("scout:portal-updated", handlePortalUpdate);
     window.removeEventListener("scout:reconcile-portal", handlePortalUpdate as EventListener);
