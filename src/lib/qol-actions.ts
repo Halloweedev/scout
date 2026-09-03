@@ -124,6 +124,16 @@ function currentPath(context: ScoutActionContext) {
   return context.panePath;
 }
 
+function enabledToolbarControl(label: "Back" | "Forward" | "Up") {
+  const button = document.querySelector<HTMLButtonElement>(`.toolbar button[aria-label="${label}"]`);
+  return !!button && !button.disabled;
+}
+
+function hasVisibleEntries() {
+  return [...document.querySelectorAll<HTMLElement>(".explorer-pane.active .pane-file-row[data-entry-path]")]
+    .some((row) => row.offsetParent !== null);
+}
+
 function actions(): ScoutAction[] {
   return [
     {
@@ -286,7 +296,7 @@ function actions(): ScoutAction[] {
       title: "Select All",
       category: "Selection",
       shortcut: `${modLabel}A`,
-      available: (context) => !!context.panePath,
+      available: (context) => !!context.panePath && hasVisibleEntries(),
       run: () => dispatchShortcut("a"),
     },
     {
@@ -302,6 +312,7 @@ function actions(): ScoutAction[] {
       title: "Go Back",
       category: "Navigation",
       shortcut: isMac ? "⌘[" : "Alt+←",
+      available: () => enabledToolbarControl("Back"),
       run: () => isMac ? dispatchShortcut("[") : dispatchAltKey("ArrowLeft"),
     },
     {
@@ -309,6 +320,7 @@ function actions(): ScoutAction[] {
       title: "Go Forward",
       category: "Navigation",
       shortcut: isMac ? "⌘]" : "Alt+→",
+      available: () => enabledToolbarControl("Forward"),
       run: () => isMac ? dispatchShortcut("]") : dispatchAltKey("ArrowRight"),
     },
     {
@@ -316,7 +328,7 @@ function actions(): ScoutAction[] {
       title: "Go to Parent Folder",
       category: "Navigation",
       shortcut: isMac ? "⌘↑" : "Alt+↑",
-      available: (context) => !!context.panePath,
+      available: () => enabledToolbarControl("Up"),
       run: () => isMac ? dispatchShortcut("ArrowUp") : dispatchAltKey("ArrowUp"),
     },
     {
