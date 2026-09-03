@@ -60,6 +60,28 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - The sidebar width is directly resizable, persisted, keyboard-adjustable through its separator, and resettable to the default width.
 - Multi-pane layouts expose persisted draggable splitters with keyboard-adjustable separators and a 50/50 reset.
 
+## Sidebar organization
+
+- Sidebar sections are disclosure controls: clicking the heading collapses/expands that section and the state persists across launches.
+- The same disclosure behavior applies to Scout's built-in sections and dynamically injected sections such as Tags, Power, and Activity.
+- Focused section headings use Enter/Space to toggle, Arrow Left to collapse, and Arrow Right to expand.
+- When focus is inside the sidebar, Arrow Up/Down moves through visible section headings and primary destinations; Home/End jump to the first or last visible control.
+- Printable-character type-ahead in the sidebar moves focus to the next visible matching section or destination and wraps through the current sidebar contents.
+- Hidden/collapsed sidebar content is excluded from keyboard traversal and type-ahead.
+- Sidebar visibility is persistent and available through the shared `Toggle Sidebar` action.
+- macOS uses Control+Cmd+S for Toggle Sidebar; Windows/Linux use Ctrl+Shift+B.
+- Hiding the sidebar moves focus back into the active explorer when focus was inside the sidebar, and showing it preserves the previously configured width and disclosure state.
+
+## Folder view preferences
+
+- Folder view preference data remains one persistent model rather than separate stores for each visual setting.
+- A remembered folder may restore Icons, List, Columns, or Gallery through the existing per-folder view preference system.
+- List folders also remember the active Name, Modified, or Size sort column and ascending/descending direction.
+- Sort restoration runs only after the List header exists and must not be mistaken for a new user sort action.
+- Restoring sorting handles both column changes and same-column opposite-direction states.
+- Forget View for This Folder clears both the remembered view and its remembered List sorting.
+- Adaptive View continues to apply only where no explicit folder preference is present.
+
 ## List view columns
 
 - List view keeps Name, Modified, and Size aligned between the sticky header and file rows.
@@ -142,3 +164,5 @@ UX & Interaction 2.0 adds destination-aware drag/drop, spring-loaded folders, dr
 UX & Interaction 3.0 adds scalable navigation chrome: overflow-safe tabs/sidebar/breadcrumbs, resizable sidebar and pane layouts, Quick Look spatial parity, and keyboard-native viewport-safe context menus.
 
 UX & Interaction 4.0 adds dense daily-driver controls without new backend systems: persisted resizable List columns, keyboard-sortable headers, registry-backed folder-background actions, menu type-ahead, and complete tab-strip keyboard semantics with conflict-free platform shortcuts.
+
+UX & Interaction 5.0 adds persistent workspace organization: collapsible and keyboard-traversable sidebar sections, persistent sidebar visibility, and per-folder List sorting integrated into the existing folder-view preference model.
