@@ -283,7 +283,7 @@ function reconcile(records?: MutationRecord[]) {
 }
 
 function handleKeyDown(event: KeyboardEvent) {
-  if (event.target instanceof HTMLInputElement || event.target instanceof HTMlTextAreaElement || (event.target instanceof HTMLElement && event.target.isContentEditable)) return;
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || (event.target instanceof HTMLElement && event.target.isContentEditable)) return;
   const modifier = event.metaKey || event.ctrlKey;
   if (!modifier) return;
   const key = event.key.toLowerCase();
