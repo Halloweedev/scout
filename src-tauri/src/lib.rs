@@ -12,6 +12,7 @@ mod images;
 mod pdf;
 mod pdf_ops;
 mod preview;
+mod qol;
 mod queue;
 mod scripts;
 mod search;
@@ -80,6 +81,10 @@ pub fn run() {
             pdf_ops::enqueue_pdf_operation,
             preview::preview_entry,
             preview::thumbnail_entry,
+            qol::delete_entries_permanently,
+            qol::create_symlinks,
+            qol::symlink_target,
+            qol::open_in_ide,
             queue::operation_queue,
             queue::cancel_operation,
             queue::clear_finished_operations,
