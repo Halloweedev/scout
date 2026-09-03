@@ -1,4 +1,5 @@
 import { availableActions, runAction, type ScoutAction, type ScoutActionContext } from "./actions";
+import { installContextualActions } from "./contextual-actions";
 
 const MENU_LAYOUT: Array<string | "separator"> = [
   "file.new-folder",
@@ -135,12 +136,14 @@ function handleBlur() {
 }
 
 export function installBackgroundContextMenu() {
+  const contextualActionsCleanup = installContextualActions();
   document.addEventListener("contextmenu", handleContextMenu, true);
   document.addEventListener("pointerdown", handlePointerDown, true);
   window.addEventListener("keydown", handleKeyDown, true);
   window.addEventListener("blur", handleBlur);
 
   return () => {
+    contextualActionsCleanup();
     closeMenu();
     document.removeEventListener("contextmenu", handleContextMenu, true);
     document.removeEventListener("pointerdown", handlePointerDown, true);
