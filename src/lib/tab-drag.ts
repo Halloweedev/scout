@@ -1,4 +1,5 @@
 const DRAG_THRESHOLD = 7;
+const CLOSED_TAB_LIMIT = 20;
 
 interface TabCandidate {
   tab: HTMLElement;
@@ -12,6 +13,7 @@ let dragging: HTMLElement | null = null;
 let orderedTabs: HTMLElement[] = [];
 let suppressClickTab: HTMLElement | null = null;
 let suppressClickUntil = 0;
+let closedTabPaths: string[] = [];
 
 function tabStrip() {
   return document.querySelector<HTMLElement>(".tab-strip");
@@ -26,6 +28,30 @@ function tabsInDom() {
 function tabFromTarget(target: EventTarget | null) {
   if (!(target instanceof Element)) return null;
   return target.closest<HTMLElement>(".tab-strip > .tab");
+}
+
+function tabPath(tab: HTMLElement) {
+  return tab.dataset.scoutDropPath
+    ?? (tab.classList.contains("active") ? document.querySelector<HTMLElement>(".explorer-pane.active")?.dataset.panePath : undefined)
+    ?? null;
+}
+
+function rememberClosedTab(tab: HTMLElement) {
+  const path = tabPath(tab);
+  if (!path) return;
+  closedTabPaths.push(path);
+  if (closedTabPaths.length > CLOSED_TAB_LIMIT) closedTabPaths = closedTabPaths.slice(-CLOSED_TAB_LIMIT);
+}
+
+function reopenClosedTab() {
+  const path = closedTabPaths.pop();
+  const button = tabStrip()?.querySelector<HTMLElement>(":scope > .new-tab-button");
+  if (!path || !button) return false;
+  button.click();
+  queueMicrotask(() => {
+    window.dispatchEvent(new CustomEvent("scout:navigate", { detail: { path } }));
+  });
+  return true;
 }
 
 function syncOrderFromDom() {
@@ -160,12 +186,25 @@ function handleAuxClick(event: MouseEvent) {
   event.stopImmediatePropagation();
 }
 
+function handleDoubleClick(event: MouseEvent) {
+  const target = event.target instanceof Element ? event.target : null;
+  const strip = target?.closest<HTMLElement>(".tab-strip");
+  if (!strip || target?.closest(".tab, .new-tab-button")) return;
+  const button = strip.querySelector<HTMLElement>(":scope > .new-tab-button");
+  if (!button) return;
+  event.preventDefault();
+  button.click();
+}
+
 function handleClickCapture(event: MouseEvent) {
   const target = event.target instanceof Element ? event.target : null;
   const close = target?.closest<HTMLElement>(".tab-close");
   if (close) {
     const tab = close.closest<HTMLElement>(".tab");
-    if (tab) prepareActiveClose(tab);
+    if (tab) {
+      rememberClosedTab(tab);
+      prepareActiveClose(tab);
+    }
     return;
   }
 
@@ -181,7 +220,16 @@ function handleKeyDown(event: KeyboardEvent) {
   const target = event.target as HTMLElement | null;
   if (target?.closest("input, textarea, [contenteditable='true']")) return;
   const modifier = event.metaKey || event.ctrlKey;
-  if (!modifier || event.shiftKey || event.altKey || event.key.toLowerCase() !== "w") return;
+  const key = event.key.toLowerCase();
+
+  if (modifier && event.shiftKey && !event.altKey && key === "t") {
+    if (!reopenClosedTab()) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    return;
+  }
+
+  if (!modifier || event.shiftKey || event.altKey || key !== "w") return;
   const tabs = tabsInDom();
   if (tabs.length <= 1) return;
   const active = tabs.find((tab) => tab.classList.contains("active"));
@@ -211,6 +259,7 @@ export function installTabDrag() {
   window.addEventListener("pointerup", handlePointerUp);
   window.addEventListener("pointercancel", handlePointerCancel);
   document.addEventListener("auxclick", handleAuxClick, true);
+  document.addEventListener("dblclick", handleDoubleClick, true);
   document.addEventListener("click", handleClickCapture, true);
   window.addEventListener("keydown", handleKeyDown, true);
   queueMicrotask(reconcile);
@@ -223,9 +272,11 @@ export function installTabDrag() {
     window.removeEventListener("pointerup", handlePointerUp);
     window.removeEventListener("pointercancel", handlePointerCancel);
     document.removeEventListener("auxclick", handleAuxClick, true);
+    document.removeEventListener("dblclick", handleDoubleClick, true);
     document.removeEventListener("click", handleClickCapture, true);
     window.removeEventListener("keydown", handleKeyDown, true);
     orderedTabs = [];
+    closedTabPaths = [];
     suppressClickTab = null;
     suppressClickUntil = 0;
     endDrag();
