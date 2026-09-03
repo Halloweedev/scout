@@ -294,13 +294,37 @@ function scheduleSelectionRefresh() {
   }, 0);
 }
 
+function eventTarget(event: KeyboardEvent) {
+  return event.target instanceof Element
+    ? event.target
+    : document.activeElement instanceof Element ? document.activeElement : null;
+}
+
+function interactiveTarget(target: Element | null) {
+  return !!target?.closest("input, textarea, select, button, a[href], audio, video, iframe, [contenteditable='true']");
+}
+
+function activeFileSurfaceOwnsFocus(target: Element | null) {
+  if (!target || interactiveTarget(target)) return false;
+  const area = target.closest<HTMLElement>(".file-area");
+  const pane = area?.closest<HTMLElement>(".explorer-pane");
+  return !!area && !!pane?.classList.contains("active");
+}
+
 function handleKeyDown(event: KeyboardEvent) {
-  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+  const target = eventTarget(event);
   if (event.code === "Space") {
-    if (!overlay && !selectedPath()) return;
+    if (overlay) {
+      if (interactiveTarget(target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+      return;
+    }
+    if (!selectedPath() || !activeFileSurfaceOwnsFocus(target)) return;
     event.preventDefault();
     event.stopPropagation();
-    if (overlay) close(); else open();
+    open();
     return;
   }
   if (!overlay) return;
