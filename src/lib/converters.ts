@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { registerActions, type ScoutActionContext } from "./actions";
 import { enqueueAndWait, type OperationJob } from "./operation-queue";
 
 interface ConverterCapabilities {
@@ -15,7 +16,6 @@ interface ConversionResult {
 
 const MEDIA_EXTENSIONS = new Set(["mp4", "mov", "mkv", "avi", "webm", "mp3", "m4a", "wav", "flac", "ogg", "aac", "mpeg", "mpg"]);
 const DOCUMENT_EXTENSIONS = new Set(["md", "markdown", "html", "htm", "txt", "doc", "docx", "odt", "rtf", "epub", "xls", "xlsx", "ods", "csv", "ppt", "pptx", "odp"]);
-let observer: MutationObserver | null = null;
 let overlay: HTMLDivElement | null = null;
 
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string) {
@@ -24,21 +24,11 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, className?: stri
   return node;
 }
 
-function selectedRow() {
-  const rows = [...document.querySelectorAll<HTMLElement>(".explorer-pane.active .pane-file-row.selected")];
-  return rows.length === 1 && rows[0].dataset.entryKind === "file" ? rows[0] : null;
-}
-
-function selectedPath() {
-  return selectedRow()?.dataset.entryPath ?? null;
-}
-
-function selectedExtension() {
-  return (selectedRow()?.dataset.entryExtension ?? "").toLowerCase();
-}
-
-function activeDirectory() {
-  return document.querySelector<HTMLElement>(".explorer-pane.active")?.dataset.panePath ?? null;
+function selectedFileWithExtension(context: ScoutActionContext, extensions: Set<string>) {
+  if (!context.panePath || context.selection.length !== 1) return null;
+  const entry = context.selection[0];
+  if (entry.kind !== "file" || !extensions.has((entry.extension ?? "").toLowerCase())) return null;
+  return entry;
 }
 
 function close() {
@@ -102,10 +92,7 @@ async function execute(command: string, args: Record<string, unknown>, output: H
   }
 }
 
-async function openConverter(kind: "media" | "document") {
-  const path = selectedPath();
-  const destination = activeDirectory();
-  if (!path || !destination) return;
+async function openConverter(kind: "media" | "document", path: string, destination: string) {
   close();
 
   overlay = element("div", "converter-backdrop");
@@ -188,51 +175,40 @@ async function openConverter(kind: "media" | "document") {
   }
 }
 
-function enhanceMenu(menu: HTMLElement) {
-  if (menu.dataset.convertersEnhanced === "1") return;
-  menu.dataset.convertersEnhanced = "1";
-  const path = selectedPath();
-  if (!path) return;
-  const extension = selectedExtension();
-  const isMedia = MEDIA_EXTENSIONS.has(extension);
-  const isDocument = DOCUMENT_EXTENSIONS.has(extension);
-  if (!isMedia && !isDocument) return;
-  const separator = element("div", "menu-separator converter-menu-separator");
-  menu.append(separator);
-  if (isMedia) {
-    const button = element("button");
-    button.type = "button";
-    button.textContent = "Convert Media…";
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      menu.remove();
-      void openConverter("media");
-    });
-    menu.append(button);
-  }
-  if (isDocument) {
-    const button = element("button");
-    button.type = "button";
-    button.textContent = "Convert Document…";
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      menu.remove();
-      void openConverter("document");
-    });
-    menu.append(button);
-  }
-}
-
-function reconcile() {
-  for (const menu of document.querySelectorAll<HTMLElement>(".context-menu")) enhanceMenu(menu);
-}
-
 export function installConverters() {
-  observer = new MutationObserver(reconcile);
-  observer.observe(document.body, { childList: true, subtree: true });
+  const unregister = registerActions([
+    {
+      id: "tools.convert-media",
+      title: "Convert Media…",
+      category: "Tools",
+      keywords: ["ffmpeg", "video", "audio", "media", "transcode"],
+      contextMenu: true,
+      contextMenuOrder: 120,
+      available: (context) => !!selectedFileWithExtension(context, MEDIA_EXTENSIONS),
+      run: async (context) => {
+        const entry = selectedFileWithExtension(context, MEDIA_EXTENSIONS);
+        if (!entry || !context.panePath) throw new Error("Select one media file to convert");
+        await openConverter("media", entry.path, context.panePath);
+      },
+    },
+    {
+      id: "tools.convert-document",
+      title: "Convert Document…",
+      category: "Tools",
+      keywords: ["pandoc", "libreoffice", "document", "office", "export"],
+      contextMenu: true,
+      contextMenuOrder: 121,
+      available: (context) => !!selectedFileWithExtension(context, DOCUMENT_EXTENSIONS),
+      run: async (context) => {
+        const entry = selectedFileWithExtension(context, DOCUMENT_EXTENSIONS);
+        if (!entry || !context.panePath) throw new Error("Select one document to convert");
+        await openConverter("document", entry.path, context.panePath);
+      },
+    },
+  ]);
+
   return () => {
-    observer?.disconnect();
-    observer = null;
+    unregister();
     close();
   };
 }
