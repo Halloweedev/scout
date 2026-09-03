@@ -1,8 +1,16 @@
 import { runAction } from "./actions";
 
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof Element)) return false;
   return !!target.closest("input, textarea, select, [contenteditable='true']");
+}
+
+function runHistory(action: "navigation.back" | "navigation.forward") {
+  void runAction(action).catch(() => {
+    // Back/forward are no-ops when the active pane has no matching history entry.
+  });
 }
 
 function handlePointerDown(event: PointerEvent) {
@@ -11,10 +19,7 @@ function handlePointerDown(event: PointerEvent) {
 
   event.preventDefault();
   event.stopPropagation();
-  const action = event.button === 3 ? "navigation.back" : "navigation.forward";
-  void runAction(action).catch(() => {
-    // Back/forward are no-ops when the active pane has no matching history entry.
-  });
+  runHistory(event.button === 3 ? "navigation.back" : "navigation.forward");
 }
 
 function handleAuxClick(event: MouseEvent) {
@@ -23,12 +28,22 @@ function handleAuxClick(event: MouseEvent) {
   event.stopPropagation();
 }
 
+function handleKeyDown(event: KeyboardEvent) {
+  if (isMac || !event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  event.preventDefault();
+  event.stopPropagation();
+  runHistory(event.key === "ArrowLeft" ? "navigation.back" : "navigation.forward");
+}
+
 export function installMouseNavigation() {
   window.addEventListener("pointerdown", handlePointerDown, true);
   window.addEventListener("auxclick", handleAuxClick, true);
+  window.addEventListener("keydown", handleKeyDown, true);
 
   return () => {
     window.removeEventListener("pointerdown", handlePointerDown, true);
     window.removeEventListener("auxclick", handleAuxClick, true);
+    window.removeEventListener("keydown", handleKeyDown, true);
   };
 }
