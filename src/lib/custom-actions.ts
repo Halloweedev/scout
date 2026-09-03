@@ -37,7 +37,7 @@ function readDefinitions(): CustomActionDefinition[] {
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter((value): value is Record<string, unknown> => !!value && typeof value === "object")
-      .map((value) => ({
+      .map((value): CustomActionDefinition => ({
         id: typeof value.id === "string" && value.id ? value.id : id(),
         title: typeof value.title === "string" ? value.title.trim() : "",
         program: typeof value.program === "string" ? value.program.trim() : "",
