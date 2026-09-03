@@ -5,9 +5,17 @@ function isEditableTarget(target: EventTarget | null) {
   return !!target.closest("input, textarea, select, [contenteditable='true']");
 }
 
+function isSidebarReorderTarget(target: EventTarget | null) {
+  return target instanceof Element && !!target.closest(".scout-sidebar-order-row");
+}
+
 function handleKeyDown(event: KeyboardEvent) {
   if (isMac || isEditableTarget(event.target)) return;
   if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.key !== "ArrowUp") return;
+
+  // Focused Bookmarks/Workspaces reserve Alt+ArrowUp for persisted sidebar
+  // reordering. Everywhere else Windows/Linux keep the parent-folder alias.
+  if (isSidebarReorderTarget(event.target)) return;
 
   event.preventDefault();
   event.stopImmediatePropagation();
