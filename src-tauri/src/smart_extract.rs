@@ -54,7 +54,7 @@ fn archive_layout(archive: &mut ZipArchive<File>, destination: &Path) -> Result<
         let Some(enclosed) = entry.enclosed_name() else {
             continue;
         };
-        if let Some(root) = top_component(enclosed) {
+        if let Some(root) = top_component(&enclosed) {
             roots.insert(root);
         }
         if enclosed.components().filter(|component| matches!(component, Component::Normal(_))).count() > 1 {
