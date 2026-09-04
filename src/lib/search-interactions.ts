@@ -3,6 +3,11 @@ function searchInputFromTarget(target: EventTarget | null) {
   return target.closest(".search-box") ? target : null;
 }
 
+function focusActiveExplorer() {
+  const area = document.querySelector<HTMLElement>(".explorer-pane.active .file-area");
+  area?.focus({ preventScroll: true });
+}
+
 function handleKeyDown(event: KeyboardEvent) {
   if (event.key !== "Escape") return;
   const input = searchInputFromTarget(event.target);
@@ -20,6 +25,7 @@ function handleKeyDown(event: KeyboardEvent) {
     return;
   }
   input.blur();
+  focusActiveExplorer();
 }
 
 export function installSearchInteractions() {
