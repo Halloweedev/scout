@@ -197,7 +197,10 @@ function readTabSession(): SavedTabSession | null {
 function readSavedSessionLayout(): SavedSessionLayout | null {
   try {
     const raw = localStorage.getItem(SESSION_LAYOUT_KEY);
-    if (!raw) return null;
+    if (!raw) {
+      const legacyPath = localStorage.getItem(LAST_LOCATION_KEY)?.trim();
+      return legacyPath ? { panePaths: [legacyPath], activePaneIndex: 0, updatedAt: 0 } : null;
+    }
     const value = JSON.parse(raw) as Partial<SavedSessionLayout>;
     const panePaths = Array.isArray(value.panePaths)
       ? value.panePaths.filter((path): path is string => typeof path === "string" && !!path.trim()).slice(0, 4)
