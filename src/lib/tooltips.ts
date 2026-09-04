@@ -178,12 +178,13 @@ function onPointerOut(event: PointerEvent) {
   const next = candidateFrom(event.relatedTarget);
   if (next === target) return;
   if (target === activeTarget || target === scheduledTarget) hideTooltip({ keepWarm: true });
+  restoreNativeTitle(target);
 }
 
 function onPointerDown() {
   pointerHeld = true;
   keyboardIntentUntil = 0;
-  hideTooltip({ keepWarm: false });
+  hideTooltip({ restoreTitle: false, keepWarm: false });
 }
 
 function onPointerRelease() {
@@ -192,7 +193,7 @@ function onPointerRelease() {
 
 function onKeyDown(event: KeyboardEvent) {
   if (event.key === "Escape") {
-    hideTooltip({ keepWarm: false });
+    hideTooltip({ restoreTitle: false, keepWarm: false });
     return;
   }
   if (["Tab", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
@@ -209,16 +210,20 @@ function onFocusIn(event: FocusEvent) {
 function onFocusOut(event: FocusEvent) {
   const target = candidateFrom(event.target);
   if (!target) return;
-  if (target === activeTarget || target === scheduledTarget) hideTooltip({ keepWarm: false });
+  if (target === activeTarget || target === scheduledTarget) hideTooltip({ restoreTitle: false, keepWarm: false });
+  restoreNativeTitle(target);
 }
 
 function onViewportChange() {
-  hideTooltip({ keepWarm: false });
+  hideTooltip({ restoreTitle: false, keepWarm: false });
 }
 
 function onMutations() {
   const target = activeTarget ?? scheduledTarget;
-  if (target && !target.isConnected) hideTooltip({ keepWarm: false });
+  if (target && !target.isConnected) {
+    hideTooltip({ restoreTitle: false, keepWarm: false });
+    restoreNativeTitle(target);
+  }
 }
 
 export function installTooltips() {
@@ -248,7 +253,7 @@ export function installTooltips() {
     window.removeEventListener("focusout", onFocusOut, true);
     window.removeEventListener("resize", onViewportChange);
     window.removeEventListener("scroll", onViewportChange, true);
-    hideTooltip({ keepWarm: false });
+    hideTooltip({ restoreTitle: false, keepWarm: false });
     for (const element of [...suppressedTitles.keys()]) restoreNativeTitle(element);
     tooltip?.remove();
     tooltip = null;
