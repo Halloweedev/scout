@@ -280,7 +280,7 @@ function handleKeyDown(event: KeyboardEvent) {
 }
 
 function shouldShieldAppFileKey(event: KeyboardEvent) {
-  if (!event.isTrusted || event.defaultPrevented || activeFileSurfaceOwnsFocus(event)) return false;
+  if (!event.isTrusted || activeFileSurfaceOwnsFocus(event)) return false;
   if (isEditableTarget(event.target)) return false;
 
   if (event.key === "F2" || event.key === "Delete" || event.key === "Enter") return true;
