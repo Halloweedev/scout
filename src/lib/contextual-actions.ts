@@ -104,7 +104,26 @@ function dispatchActionError(error: unknown) {
   }));
 }
 
+function activeExplorerArea() {
+  return document.querySelector<HTMLElement>(".explorer-pane.active .file-area");
+}
+
+function restoreAfterMenuAction(trigger: HTMLButtonElement | null) {
+  window.setTimeout(() => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement
+      && active.isConnected
+      && active !== document.body
+      && active !== document.documentElement) return;
+    if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+    else activeExplorerArea()?.focus({ preventScroll: true });
+  }, 0);
+}
+
 async function execute(action: ScoutAction, context: ScoutActionContext) {
+  const menuTrigger = menu && document.activeElement instanceof Node && menu.contains(document.activeElement)
+    ? bar?.querySelector<HTMLButtonElement>(".contextual-action-more") ?? null
+    : null;
   closeMenu();
   try {
     await runAction(action.id, context);
@@ -112,6 +131,7 @@ async function execute(action: ScoutAction, context: ScoutActionContext) {
     dispatchActionError(error);
   } finally {
     queueSync();
+    if (menuTrigger) restoreAfterMenuAction(menuTrigger);
   }
 }
 
