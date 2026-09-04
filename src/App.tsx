@@ -23,6 +23,10 @@ const WORKSPACES_KEY = "scout.workspaces.v1";
 const LINKED_PANES_KEY = "scout.linked-panes.v1";
 const VIEW_KEY = "scout.view.v2";
 const BOOKMARKS_KEY = "scout.bookmarks.v1";
+const SHOW_HIDDEN_KEY = "scout.show-hidden.v1";
+const ZOOM_KEY = "scout.zoom.v1";
+const MIN_ZOOM = 0.85;
+const MAX_ZOOM = 1.4;
 
 type ViewMode = "icons" | "list" | "columns" | "gallery";
 
@@ -105,6 +109,12 @@ function readBookmarks(): SavedBookmark[] {
   }
 }
 
+function readZoom() {
+  const value = Number.parseFloat(localStorage.getItem(ZOOM_KEY) ?? "");
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+}
+
 function formatBytes(value: number | null) {
   if (value === null) return "—";
   if (value < 1024) return `${value} B`;
@@ -166,7 +176,7 @@ export default function App() {
   const [activeTabId, setActiveTabId] = createSignal("");
   const [panes, setPanes] = createSignal<PaneState[]>([]);
   const [activePaneId, setActivePaneId] = createSignal("");
-  const [showHidden, setShowHidden] = createSignal(false);
+  const [showHidden, setShowHidden] = createSignal(localStorage.getItem(SHOW_HIDDEN_KEY) === "1");
   const [linkedPanes, setLinkedPanes] = createSignal(localStorage.getItem(LINKED_PANES_KEY) === "1");
   const [workspaces, setWorkspaces] = createSignal<SavedWorkspace[]>(readWorkspaces());
   const [bookmarks, setBookmarks] = createSignal<SavedBookmark[]>(readBookmarks());
@@ -189,7 +199,7 @@ export default function App() {
   const [viewMenuOpen, setViewMenuOpen] = createSignal(false);
   const [columnRoots, setColumnRoots] = createSignal<Record<string, string>>({});
   const [isDragging, setIsDragging] = createSignal(false);
-  const [zoom, setZoom] = createSignal(1);
+  const [zoom, setZoom] = createSignal(readZoom());
   const [sortBy, setSortBy] = createSignal<"name" | "modified" | "size" | "type">("name");
   const [sortDir, setSortDir] = createSignal<"asc" | "desc">("asc");
   let rubberBand: HTMLDivElement | null = null;
@@ -791,6 +801,7 @@ export default function App() {
     const activeIndex = Math.min(Math.max(workspace.activePaneIndex, 0), restored.length - 1);
     const focused = restored[activeIndex];
     setShowHidden(workspace.showHidden);
+    localStorage.setItem(SHOW_HIDDEN_KEY, workspace.showHidden ? "1" : "0");
     setLinkedPanes(workspace.linkedPanes);
     localStorage.setItem(LINKED_PANES_KEY, workspace.linkedPanes ? "1" : "0");
     setPanes(restored);
@@ -976,7 +987,7 @@ export default function App() {
       if (fallback) await loadPane(pane.id, fallback);
       else await reloadPane(pane.id);
     } catch (reason) {
-      updatePane(pane.id, (current) => ({ ...current, error: String(reason) }));
+      updatePane(pane.id, (current) => ({ ...pane, error: String(reason) }));
     }
   }
 
@@ -1009,8 +1020,16 @@ export default function App() {
   }
 
   async function toggleHiddenFiles() {
-    setShowHidden((value) => !value);
+    const next = !showHidden();
+    setShowHidden(next);
+    localStorage.setItem(SHOW_HIDDEN_KEY, next ? "1" : "0");
     await Promise.all(panes().map((pane) => reloadPane(pane.id)));
+  }
+
+  function persistZoom(next: number) {
+    const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(next * 100) / 100));
+    setZoom(clamped);
+    localStorage.setItem(ZOOM_KEY, String(clamped));
   }
 
   function moveKeyboardSelection(delta: number) {
@@ -1137,13 +1156,13 @@ export default function App() {
       await toggleHiddenFiles();
     } else if ((event.key === "=" || event.key === "+") && modifier) {
       event.preventDefault();
-      setZoom((z) => Math.min(1.4, z + 0.1));
+      persistZoom(zoom() + 0.1);
     } else if (event.key === "-" && modifier) {
       event.preventDefault();
-      setZoom((z) => Math.max(0.85, z - 0.1));
+      persistZoom(zoom() - 0.1);
     } else if (event.key === "0" && modifier) {
       event.preventDefault();
-      setZoom(1);
+      persistZoom(1);
     } else if (event.key === "F2" && selected[0]) {
       event.preventDefault();
       startRename(activePaneId(), selected[0]);
