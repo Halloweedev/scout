@@ -37,6 +37,13 @@ function topRecord() {
   return records.at(-1) ?? null;
 }
 
+function activeRestoreTarget() {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !active.isConnected) return null;
+  if (active === document.body || active === document.documentElement) return null;
+  return active;
+}
+
 function focusDialog(dialog: HTMLElement) {
   if (!dialog.isConnected) return;
   const active = document.activeElement;
@@ -147,9 +154,7 @@ function reconcile() {
   let inheritedRestore = removed.at(-1)?.restore ?? null;
   for (const dialog of connected) {
     if (records.some((record) => record.dialog === dialog)) continue;
-    const active = document.activeElement instanceof HTMLElement && document.activeElement.isConnected
-      ? document.activeElement
-      : null;
+    const active = activeRestoreTarget();
     const restore = active && !dialog.contains(active) ? active : inheritedRestore;
     addDialog(dialog, restore);
     inheritedRestore = restore;
