@@ -40,18 +40,35 @@ function registryActions() {
   return new Map(availableActions(context).map((action) => [action.id, action]));
 }
 
+function restoreExplorerAfterKeyboardAction(button: HTMLButtonElement) {
+  window.setTimeout(() => {
+    if (button.isConnected) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement
+      && active.isConnected
+      && active !== document.body
+      && active !== document.documentElement) return;
+    activeArea()?.focus({ preventScroll: true });
+  }, 0);
+}
+
 function actionButton(action: ScoutAction, label = action.title, primary = false) {
   const button = create("button", `state-recovery-action${primary ? " primary" : ""}`);
   button.type = "button";
   button.textContent = label;
   if (action.shortcut) button.title = `${action.title} · ${action.shortcut}`;
-  button.addEventListener("click", () => {
+  button.addEventListener("click", (event) => {
+    const keyboardActivation = event.detail === 0;
     const context = actionContext();
-    void runAction(action.id, context).catch((error) => {
-      window.dispatchEvent(new CustomEvent("scout:action-error", {
-        detail: { message: error instanceof Error ? error.message : String(error) },
-      }));
-    });
+    void runAction(action.id, context)
+      .catch((error) => {
+        window.dispatchEvent(new CustomEvent("scout:action-error", {
+          detail: { message: error instanceof Error ? error.message : String(error) },
+        }));
+      })
+      .finally(() => {
+        if (keyboardActivation) restoreExplorerAfterKeyboardAction(button);
+      });
   });
   return button;
 }
