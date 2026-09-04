@@ -251,3 +251,16 @@ UX 7 makes Scout's existing power discoverable at the moment it is relevant. It 
 - [x] Recovery listeners, observers, delayed feedback, and generated UI clean up completely during HMR disposal
 
 UX 8 makes empty, filtered, loading, and failed explorer states actionable without introducing another operation or command system. Recovery UI remains a presentation layer over Scout's existing Actions Registry and filesystem/navigation state.
+
+### UX 9 — Truthful command availability
+
+- [x] Paste is exposed only while Scout actually owns a non-empty Copy/Cut clipboard payload
+- [x] Folder-background and empty-folder recovery surfaces inherit the same canonical clipboard-aware action context
+- [x] Back, Forward, Parent, Bookmark, current-folder Filter/Location, and tab commands follow the real enabled shell controls/state
+- [x] Select All, Invert Selection, Select All Folders, and Select All Files disappear when there is nothing eligible to select
+- [x] Close Tabs to the Left/Right only appear when tabs actually exist on that side of the active tab
+- [x] Move/Open to another pane suppresses same-folder no-op cases while retaining valid copy/move/open workflows
+- [x] Duplicate Focus Next/Previous Pane registrations are consolidated onto the UX3 commands with the canonical shortcuts
+- [x] Native context-menu actions are not duplicated by registry augmentation, while remaining available in contextual discovery and the Command Palette
+
+UX 9 treats command availability as part of the interaction contract: Scout should not advertise an action that cannot materially do what its label promises. The shared Actions Registry remains the source of truth, with existing native controls and pane state used as authoritative availability signals rather than parallel business logic.
