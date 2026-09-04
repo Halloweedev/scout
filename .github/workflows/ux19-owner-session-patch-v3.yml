@@ -1,0 +1,73 @@
+name: UX19 owner session patch v3
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Retry UX19 owner session patch v3'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Apply corrected UX19 patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/ux19-owner-session-patch.yml').read_text()
+          start_token = "          python3 - <<'PY'\n"
+          end_token = "\n          PY\n"
+          raw = workflow.split(start_token, 1)[1].split(end_token, 1)[0]
+          script = textwrap.dedent(raw)
+
+          block_start = script.index("navigate_handler = '''  function handleScoutNavigate")
+          block_end = script.index("\n\ninit_start = source.index('  async function initializeApp() {')", block_start)
+          handlers = '''  function handleTabsReordered() {
+            const ids = [...document.querySelectorAll<HTMLElement>(".tab-strip > .tab[data-tab-id]")]
+              .map((tab) => tab.dataset.tabId ?? "")
+              .filter(Boolean);
+            const current = tabs();
+            if (ids.length !== current.length) return;
+            const byId = new Map(current.map((tab) => [tab.id, tab]));
+            const reordered = ids.map((id) => byId.get(id)).filter((tab): tab is ExplorerTab => !!tab);
+            if (reordered.length !== current.length) return;
+            if (reordered.every((tab, index) => tab.id === current[index]?.id)) return;
+            setTabs(reordered);
+          }
+
+          function handleTabSessionPageHide() {
+            persistTabSessionSnapshot(tabs(), activeTabId());
+          }
+
+          '''
+          replacement = (
+              'handlers = ' + repr(handlers) + '\n'
+              + "insert_at = source.index('  async function initializeApp() {')\n"
+              + 'source = source[:insert_at] + handlers + source[insert_at:]'
+          )
+          script = script[:block_start] + replacement + script[block_end + 2:]
+          exec(compile(script, 'ux19_patch.py', 'exec'), {})
+          PY
+
+          git rm .github/workflows/ux19-owner-session-patch.yml .github/workflows/ux19-owner-session-patch-v2.yml .github/workflows/ux19-owner-session-patch-v3.yml
+          git diff --check
+          pnpm install --frozen-lockfile
+          pnpm build
+          git config user.name "Nicolas"
+          git config user.email "halloweed@tutamail.com"
+          git add src/App.tsx docs/UX12_SESSION_CONTINUITY.md docs/UX16_PANE_SESSION_CONTINUITY.md docs/UX19_TAB_SESSION_CONTINUITY.md .github/workflows/ux19-owner-session-patch.yml .github/workflows/ux19-owner-session-patch-v2.yml .github/workflows/ux19-owner-session-patch-v3.yml
+          git commit -m "Implement UX19 owner tab session continuity"
+          git push origin HEAD:main
