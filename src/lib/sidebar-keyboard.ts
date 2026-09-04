@@ -87,30 +87,71 @@ function restoreFocusAfterRemoval(sidebar: HTMLElement, removedIndex: number) {
   });
 }
 
-function handleSidebarDelete(event: KeyboardEvent, target: Element) {
-  const row = target.closest<HTMLElement>(".scout-sidebar-order-row");
-  if (!row) return false;
+function removeRowAndRestoreFocus(sidebar: HTMLElement, row: HTMLElement) {
+  const primary = row.querySelector<HTMLElement>(".workspace-open");
+  const remove = row.querySelector<HTMLButtonElement>(".workspace-delete");
+  if (!remove) return false;
+  const removedIndex = primary ? visibleControls(sidebar).indexOf(primary) : -1;
+  remove.click();
+  if (removedIndex >= 0) restoreFocusAfterRemoval(sidebar, removedIndex);
+  return true;
+}
 
-  const plainRemove = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
+function handleSidebarDelete(event: KeyboardEvent, sidebar: HTMLElement, target: Element) {
+  const row = target.closest<HTMLElement>(".scout-sidebar-order-row");
+  const noModifiers = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
+  const plainRemove = !!row && noModifiers
     && (event.key === "Delete" || (isMac && event.key === "Backspace"));
-  const couldDeleteFiles = event.key === "Delete"
-    || (isMac && event.metaKey && !event.ctrlKey && !event.altKey && event.key === "Backspace");
-  if (!plainRemove && !couldDeleteFiles) return false;
+  const sidebarDeleteKey = event.key === "Delete"
+    || (isMac && event.key === "Backspace" && (noModifiers || (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey)));
+  if (!sidebarDeleteKey) return false;
 
   event.preventDefault();
   event.stopImmediatePropagation();
   clearTypeBuffer();
 
-  if (plainRemove) {
-    const sidebar = row.closest<HTMLElement>(".sidebar");
-    const primary = row.querySelector<HTMLElement>(".workspace-open");
-    const remove = row.querySelector<HTMLButtonElement>(".workspace-delete");
-    if (remove) {
-      const removedIndex = sidebar && primary ? visibleControls(sidebar).indexOf(primary) : -1;
-      remove.click();
-      if (sidebar && removedIndex >= 0) restoreFocusAfterRemoval(sidebar, removedIndex);
-    }
+  if (plainRemove && row) removeRowAndRestoreFocus(sidebar, row);
+  return true;
+}
+
+function handleSidebarF2(event: KeyboardEvent, target: Element) {
+  if (event.key !== "F2" || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return false;
+
+  // Bookmark/Workspace primary controls own F2 through sidebar-order.ts.
+  // Every other sidebar surface consumes it so App's stale file selection
+  // cannot be renamed while keyboard focus belongs to sidebar chrome.
+  if (target.closest(".scout-sidebar-order-row .workspace-open")) return false;
+
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  clearTypeBuffer();
+  return true;
+}
+
+function handleSidebarActivation(event: KeyboardEvent, sidebar: HTMLElement, target: Element) {
+  if (event.key !== "Enter" && event.key !== " ") return false;
+  if (event.metaKey || event.ctrlKey || event.altKey) return false;
+
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  clearTypeBuffer();
+
+  const disclosure = target.closest<HTMLElement>('.sidebar-section-label[data-scout-sidebar-disclosure="1"]');
+  if (disclosure) {
+    disclosure.click();
+    return true;
   }
+
+  const button = target.closest<HTMLButtonElement>("button");
+  if (!button || !sidebar.contains(button) || button.disabled) return true;
+
+  const row = button.closest<HTMLElement>(".scout-sidebar-order-row");
+  if (button.classList.contains("workspace-delete") && row) {
+    removeRowAndRestoreFocus(sidebar, row);
+    return true;
+  }
+
+  button.click();
   return true;
 }
 
@@ -120,7 +161,9 @@ function handleKeyDown(event: KeyboardEvent) {
   const sidebar = target.closest<HTMLElement>(".sidebar");
   if (!sidebar) return;
   if (target.closest("input, textarea, select, [contenteditable='true']")) return;
-  if (handleSidebarDelete(event, target)) return;
+  if (handleSidebarDelete(event, sidebar, target)) return;
+  if (handleSidebarF2(event, target)) return;
+  if (handleSidebarActivation(event, sidebar, target)) return;
 
   // Alt+ArrowUp/Down belongs to the reorderable Bookmark/Workspace layer.
   // Yield here so normal sidebar focus traversal never races that action.
