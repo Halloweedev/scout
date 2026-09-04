@@ -123,6 +123,24 @@ function openKeyboardContextMenu(event: KeyboardEvent) {
   return true;
 }
 
+function dismissKeyboardMenu(event: KeyboardEvent) {
+  const row = selectedContextRow();
+  const focusTarget = row?.closest<HTMLElement>(".file-area") ?? null;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  resetTypeahead();
+
+  // App owns the context-menu state and already closes it on outside clicks.
+  // Reuse that path instead of removing Solid-owned DOM behind its back.
+  document.body.dispatchEvent(new MouseEvent("click", {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+  }));
+
+  window.setTimeout(() => focusTarget?.focus({ preventScroll: true }), 0);
+}
+
 function moveFocus(menu: HTMLElement, delta: number) {
   const buttons = menuButtons(menu);
   if (!buttons.length) return;
@@ -184,6 +202,10 @@ function handleKeyDown(event: KeyboardEvent) {
     return;
   }
 
+  if (event.key === "Escape") {
+    dismissKeyboardMenu(event);
+    return;
+  }
   if (event.key === "ArrowDown") {
     event.preventDefault();
     event.stopPropagation();
