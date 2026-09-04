@@ -14,6 +14,10 @@ interface ModalRecord {
   dialog: HTMLElement;
   restore: HTMLElement | null;
   blockBubble: (event: KeyboardEvent) => void;
+  addedRole: boolean;
+  addedAriaLabel: boolean;
+  previousAriaModal: string | null;
+  addedTabIndex: boolean;
 }
 
 let observer: MutationObserver | null = null;
@@ -123,18 +127,45 @@ function handleFocusIn(event: FocusEvent) {
   queueMicrotask(() => focusDialog(record.dialog));
 }
 
+function restoreManagedAttributes(record: ModalRecord) {
+  const { dialog } = record;
+  dialog.removeEventListener('keydown', record.blockBubble);
+  delete dialog.dataset.scoutModalManaged;
+  if (record.addedRole) dialog.removeAttribute('role');
+  if (record.addedAriaLabel) dialog.removeAttribute('aria-label');
+  if (record.previousAriaModal === null) dialog.removeAttribute('aria-modal');
+  else dialog.setAttribute('aria-modal', record.previousAriaModal);
+  if (record.addedTabIndex) dialog.removeAttribute('tabindex');
+}
+
 function addDialog(dialog: HTMLElement, restore: HTMLElement | null) {
-  if (!dialog.hasAttribute('role')) dialog.setAttribute('role', 'dialog');
+  const addedRole = !dialog.hasAttribute('role');
+  const previousAriaModal = dialog.getAttribute('aria-modal');
+  const addedTabIndex = !dialog.hasAttribute('tabindex');
+  let addedAriaLabel = false;
+
+  if (addedRole) dialog.setAttribute('role', 'dialog');
   if (!dialog.hasAttribute('aria-label') && !dialog.hasAttribute('aria-labelledby')) {
     const heading = dialog.querySelector<HTMLElement>('h1, h2, h3');
-    if (heading?.textContent?.trim()) dialog.setAttribute('aria-label', heading.textContent.trim());
+    if (heading?.textContent?.trim()) {
+      dialog.setAttribute('aria-label', heading.textContent.trim());
+      addedAriaLabel = true;
+    }
   }
   dialog.setAttribute('aria-modal', 'true');
-  if (!dialog.hasAttribute('tabindex')) dialog.tabIndex = -1;
+  if (addedTabIndex) dialog.tabIndex = -1;
   dialog.dataset.scoutModalManaged = 'true';
   const blockBubble = (event: KeyboardEvent) => event.stopPropagation();
   dialog.addEventListener('keydown', blockBubble);
-  records.push({ dialog, restore, blockBubble });
+  records.push({
+    dialog,
+    restore,
+    blockBubble,
+    addedRole,
+    addedAriaLabel,
+    previousAriaModal,
+    addedTabIndex,
+  });
 }
 
 function reconcile() {
@@ -145,10 +176,7 @@ function reconcile() {
   const previousTop = topRecord();
   const previousRecords = new Set(records.map((record) => record.dialog));
   const removed = records.filter((record) => !connectedSet.has(record.dialog));
-  for (const record of removed) {
-    record.dialog.removeEventListener('keydown', record.blockBubble);
-    delete record.dialog.dataset.scoutModalManaged;
-  }
+  for (const record of removed) restoreManagedAttributes(record);
   records = records.filter((record) => connectedSet.has(record.dialog));
 
   let inheritedRestore = removed.at(-1)?.restore ?? null;
@@ -199,10 +227,7 @@ export function installModalFocusContract() {
     observer?.disconnect();
     observer = null;
     reconcileQueued = false;
-    for (const record of records) {
-      record.dialog.removeEventListener('keydown', record.blockBubble);
-      delete record.dialog.dataset.scoutModalManaged;
-    }
+    for (const record of records) restoreManagedAttributes(record);
     records = [];
   };
 }
