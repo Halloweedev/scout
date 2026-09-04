@@ -224,6 +224,9 @@ function onMutations() {
     hideTooltip({ restoreTitle: false, keepWarm: false });
     restoreNativeTitle(target);
   }
+  for (const element of [...suppressedTitles.keys()]) {
+    if (!element.isConnected) restoreNativeTitle(element);
+  }
 }
 
 export function installTooltips() {
