@@ -1,3 +1,5 @@
+import { requestOpenTab } from "./tab-commands";
+
 const isMac = /mac|iphone|ipad|ipod/i.test(navigator.platform || navigator.userAgent);
 
 function breadcrumbPath(button: HTMLElement) {
@@ -34,20 +36,10 @@ function destinationFromTarget(target: EventTarget | null) {
   return sidebar.dataset.scoutDropPath ?? null;
 }
 
-function openInNewTab(path: string) {
-  const button = document.querySelector<HTMLElement>(".tab-strip > .new-tab-button");
-  if (!button) return false;
-  button.click();
-  queueMicrotask(() => {
-    window.dispatchEvent(new CustomEvent("scout:navigate", { detail: { path } }));
-  });
-  return true;
-}
-
 function handleAuxClick(event: MouseEvent) {
   if (event.button !== 1) return;
   const path = destinationFromTarget(event.target);
-  if (!path || !openInNewTab(path)) return;
+  if (!path || !requestOpenTab(path)) return;
   event.preventDefault();
   event.stopImmediatePropagation();
 }
@@ -56,7 +48,7 @@ function handleClick(event: MouseEvent) {
   const modifier = isMac ? event.metaKey : event.ctrlKey;
   if (!modifier || event.shiftKey || event.altKey || (isMac && event.ctrlKey)) return;
   const path = destinationFromTarget(event.target);
-  if (!path || !openInNewTab(path)) return;
+  if (!path || !requestOpenTab(path)) return;
   event.preventDefault();
   event.stopImmediatePropagation();
 }
