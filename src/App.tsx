@@ -987,7 +987,7 @@ export default function App() {
       if (fallback) await loadPane(pane.id, fallback);
       else await reloadPane(pane.id);
     } catch (reason) {
-      updatePane(pane.id, (current) => ({ ...pane, error: String(reason) }));
+      updatePane(pane.id, (current) => ({ ...current, error: String(reason) }));
     }
   }
 
