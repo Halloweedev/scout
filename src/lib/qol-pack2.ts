@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { registerActions, type ScoutActionContext } from "./actions";
+import { confirmDestructive } from "./destructive-confirm";
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 
@@ -101,7 +102,14 @@ async function permanentDelete(context: ScoutActionContext) {
   if (!context.selectedPaths.length) throw new Error("Select at least one item");
   const count = context.selectedPaths.length;
   const label = count === 1 ? context.selection[0]?.name ?? "this item" : `${count} items`;
-  const confirmed = window.confirm(`Permanently delete ${label}?\n\nThis skips the Trash and cannot be undone.`);
+  const confirmed = await confirmDestructive({
+    title: "Delete permanently?",
+    message: count === 1
+      ? `${label} will be deleted without going to the Trash.`
+      : `${count} items will be deleted without going to the Trash.`,
+    detail: "This action cannot be undone.",
+    confirmLabel: "Delete Permanently",
+  });
   if (!confirmed) return;
   await invoke<void>("delete_entries_permanently", { paths: context.selectedPaths });
   refreshCurrentFolder();
