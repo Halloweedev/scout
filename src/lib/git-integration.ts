@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { registerActions, type ScoutActionContext } from "./actions";
+import { confirmDestructive } from "./destructive-confirm";
 
 interface GitFileStatus {
   path: string;
@@ -211,8 +212,16 @@ function fileRow(root: string, file: GitFileStatus, refresh: () => Promise<void>
     discard.type = "button";
     discard.textContent = "Discard";
     discard.addEventListener("click", () => {
-      if (!window.confirm(`Discard uncommitted working-tree changes in ${file.path}?`)) return;
-      void mutate("git_discard", [fullPath], refresh);
+      void (async () => {
+        const confirmed = await confirmDestructive({
+          title: "Discard working-tree changes?",
+          message: `${file.path} will be restored from Git, discarding its uncommitted working-tree edits.`,
+          detail: "Staged changes remain in the Git index.",
+          confirmLabel: "Discard Changes",
+        });
+        if (!confirmed) return;
+        await mutate("git_discard", [fullPath], refresh);
+      })();
     });
     actions.append(discard);
   }
@@ -399,7 +408,16 @@ export function installGitIntegration() {
       danger: true,
       available: (context) => selectionMatches(context, diffableStates),
       run: async (context) => {
-        if (!window.confirm(`Discard uncommitted working-tree changes for ${context.selectedPaths.length === 1 ? "the selected item" : `${context.selectedPaths.length} selected items`}?`)) return;
+        const count = context.selectedPaths.length;
+        const confirmed = await confirmDestructive({
+          title: "Discard working-tree changes?",
+          message: count === 1
+            ? "The selected item will be restored from Git, discarding its uncommitted working-tree edits."
+            : `${count} selected items will be restored from Git, discarding their uncommitted working-tree edits.`,
+          detail: "Staged changes remain in the Git index.",
+          confirmLabel: "Discard Changes",
+        });
+        if (!confirmed) return;
         await invoke("git_discard", { paths: context.selectedPaths });
         toast("Discarded working-tree changes");
         refreshAmbient();
