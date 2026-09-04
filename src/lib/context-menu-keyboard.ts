@@ -88,6 +88,11 @@ function selectedContextRow() {
     ?? pane.querySelector<HTMLElement>(".pane-file-row.selected");
 }
 
+function activeFileArea() {
+  return selectedContextRow()?.closest<HTMLElement>(".file-area")
+    ?? document.querySelector<HTMLElement>(".explorer-pane.active .file-area");
+}
+
 function keyboardTarget(event: KeyboardEvent) {
   return event.target instanceof Element
     ? event.target
@@ -160,9 +165,7 @@ function openKeyboardContextMenu(event: KeyboardEvent) {
 }
 
 function dismissKeyboardMenu(event: KeyboardEvent, menu: HTMLElement) {
-  const row = selectedContextRow();
-  const focusTarget = row?.closest<HTMLElement>(".file-area")
-    ?? document.querySelector<HTMLElement>(".explorer-pane.active .file-area");
+  const focusTarget = activeFileArea();
   event.preventDefault();
   event.stopImmediatePropagation();
   resetTypeahead();
@@ -190,6 +193,18 @@ function dismissKeyboardMenu(event: KeyboardEvent, menu: HTMLElement) {
   }
 
   window.setTimeout(() => focusTarget?.focus({ preventScroll: true }), 0);
+}
+
+function restoreFileFocusAfterAction(menu: HTMLElement) {
+  window.setTimeout(() => {
+    if (menu.isConnected && menu.offsetParent !== null) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement
+      && active.isConnected
+      && active !== document.body
+      && active !== document.documentElement) return;
+    activeFileArea()?.focus({ preventScroll: true });
+  }, 0);
 }
 
 function moveFocus(menu: HTMLElement, delta: number) {
@@ -292,6 +307,7 @@ function handleKeyDown(event: KeyboardEvent) {
     event.stopPropagation();
     resetTypeahead();
     document.activeElement.click();
+    restoreFileFocusAfterAction(menu);
     return;
   }
   if (event.key.length === 1 && event.key !== " " && !event.ctrlKey && !event.metaKey && !event.altKey) {
