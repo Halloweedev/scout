@@ -105,14 +105,6 @@ function hasDistinctOtherPane(context: ScoutActionContext) {
   return !!destination && !!context.panePath && comparablePath(destination) !== comparablePath(context.panePath);
 }
 
-function paneCycle(delta: number) {
-  const visible = panes();
-  if (visible.length < 2) throw new Error("Add another pane first");
-  const active = visible.findIndex((pane) => pane.classList.contains("active"));
-  const next = visible[(Math.max(active, 0) + delta + visible.length) % visible.length];
-  next.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
-}
-
 async function transferToOtherPane(context: ScoutActionContext, mode: "copy" | "move") {
   const destination = otherPanePath();
   if (!destination) throw new Error("Add another pane first");
@@ -241,22 +233,6 @@ export function installQolPack3() {
       keywords: ["files only", "exclude folders"],
       available: (context) => !!context.panePath && hasVisibleKind("file"),
       run: () => selectRows((row) => row.dataset.entryKind !== "directory", "files"),
-    },
-    {
-      id: "navigation.next-pane",
-      title: "Focus Next Pane",
-      category: "Navigation",
-      keywords: ["split", "pane", "focus", "next"],
-      available: () => panes().length > 1,
-      run: () => paneCycle(1),
-    },
-    {
-      id: "navigation.previous-pane",
-      title: "Focus Previous Pane",
-      category: "Navigation",
-      keywords: ["split", "pane", "focus", "previous"],
-      available: () => panes().length > 1,
-      run: () => paneCycle(-1),
     },
   ]);
 }
