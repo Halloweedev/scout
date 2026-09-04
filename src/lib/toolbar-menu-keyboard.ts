@@ -15,9 +15,13 @@ function activeMenu() {
   return menus()[0] ?? null;
 }
 
+function allMenuButtons(menu: HTMLElement) {
+  return [...menu.querySelectorAll<HTMLButtonElement>("button")];
+}
+
 function menuButtons(menu: HTMLElement) {
-  return [...menu.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")]
-    .filter((button) => button.offsetParent !== null);
+  return allMenuButtons(menu)
+    .filter((button) => !button.disabled && button.offsetParent !== null);
 }
 
 function triggerFor(menu: HTMLElement) {
@@ -33,10 +37,13 @@ function setRoving(menu: HTMLElement, target: HTMLButtonElement | null, focus = 
 
 function enhance(menu: HTMLElement) {
   menu.setAttribute("aria-orientation", "vertical");
-  const buttons = menuButtons(menu);
-  for (const button of buttons) {
-    if (!button.hasAttribute("role")) button.setAttribute("role", "menuitem");
+  for (const button of allMenuButtons(menu)) {
+    if (button.hasAttribute("role")) continue;
+    button.setAttribute("role", "menuitem");
+    button.dataset.scoutToolbarMenuRole = "1";
   }
+
+  const buttons = menuButtons(menu);
   const focused = document.activeElement instanceof HTMLButtonElement && menu.contains(document.activeElement)
     ? document.activeElement
     : null;
@@ -48,6 +55,17 @@ function enhance(menu: HTMLElement) {
     pendingFocus = null;
     const target = pending.edge === "last" ? buttons.at(-1) ?? null : buttons[0] ?? null;
     queueMicrotask(() => setRoving(menu, target, true));
+  }
+}
+
+function cleanupMenu(menu: HTMLElement) {
+  menu.removeAttribute("aria-orientation");
+  for (const button of allMenuButtons(menu)) {
+    button.removeAttribute("tabindex");
+    if (button.dataset.scoutToolbarMenuRole === "1") {
+      button.removeAttribute("role");
+      delete button.dataset.scoutToolbarMenuRole;
+    }
   }
 }
 
@@ -230,5 +248,6 @@ export function installToolbarMenuKeyboard() {
     resetTypeahead();
     window.removeEventListener("keydown", handleKeyDown, true);
     document.removeEventListener("pointerdown", handlePointerDown, true);
+    for (const menu of document.querySelectorAll<HTMLElement>(".view-menu, .toolbar-dropdown-menu")) cleanupMenu(menu);
   };
 }
