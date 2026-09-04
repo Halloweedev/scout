@@ -264,3 +264,17 @@ UX 8 makes empty, filtered, loading, and failed explorer states actionable witho
 - [x] Native context-menu actions are not duplicated by registry augmentation, while remaining available in contextual discovery and the Command Palette
 
 UX 9 treats command availability as part of the interaction contract: Scout should not advertise an action that cannot materially do what its label promises. The shared Actions Registry remains the source of truth, with existing native controls and pane state used as authoritative availability signals rather than parallel business logic.
+
+### UX 10 — Focus authority and transient dismissal
+
+- [x] Trusted physical file keys only affect the active explorer file surface; tabs, toolbar, sidebar, splitters, menus, and other chrome shield stale file selection from Enter/F2/Delete/Escape and navigation keys
+- [x] File rows and file-area background explicitly restore explorer focus for subsequent keyboard navigation, while embedded List headers, resizers, recovery buttons, and other controls remain independent keyboard surfaces
+- [x] Text inputs, textareas, selects, and contenteditable controls retain native editing/selection shortcuts instead of leaking Copy/Cut/Paste/Select All or file commands into Scout's global handler
+- [x] Sidebar Enter/Space activation, F2 Bookmark/Workspace rename, Delete/Backspace removal, and post-removal focus are owned by the sidebar rather than the active explorer selection
+- [x] Shift+F10 / Context Menu key only opens an item menu when the active explorer file surface owns focus
+- [x] Quick Look uses focus-scoped trusted Space while preserving explicit registry invocation through its synthetic command path
+- [x] Quick Look, item context menus, folder-background context menus, List resize, and navigation chrome dismiss on Escape without also clearing the underlying file selection
+- [x] Context-menu dismissal follows the owning state path (Solid/App item menus versus DOM-owned folder-background menus) instead of deleting foreign-owned DOM directly
+- [x] Windows/Linux history aliases remain editor-safe and registry-triggered history avoids replay recursion
+
+UX 10 makes keyboard ownership explicit: focused UI gets first claim on physical keys, file commands run only from the explorer surface, and dismissing transient chrome never performs a second hidden action on stale file selection. Synthetic registry commands remain deliberate command invocations rather than being confused with physical focus-bound input.
