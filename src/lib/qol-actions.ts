@@ -288,7 +288,7 @@ function actions(): ScoutAction[] {
       title: "Paste",
       category: "File",
       shortcut: `${modLabel}V`,
-      available: (context) => !!context.panePath,
+      available: (context) => !!context.panePath && (context.clipboardCount ?? 0) > 0,
       run: () => dispatchShortcut("v"),
     },
     {

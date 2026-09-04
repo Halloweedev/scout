@@ -14,6 +14,7 @@ export interface ScoutActionContext {
   selectedPaths: string[];
   tabCount: number;
   hasActiveTab: boolean;
+  clipboardCount?: number;
 }
 
 export type ScoutActionResult = void | boolean | Promise<void | boolean>;
@@ -68,6 +69,16 @@ function contextMenuCategoryRank(category: ScoutActionCategory) {
   return index < 0 ? CONTEXT_MENU_CATEGORY_ORDER.length : index;
 }
 
+function clipboardCountFromApp() {
+  for (const item of document.querySelectorAll<HTMLElement>(".statusbar > span")) {
+    const match = /^(?:Copied|Cut)\s+(\d+)$/.exec(item.textContent?.trim() ?? "");
+    if (!match) continue;
+    const count = Number.parseInt(match[1], 10);
+    return Number.isFinite(count) ? count : 0;
+  }
+  return 0;
+}
+
 export function actionContext(): ScoutActionContext {
   const pane = document.querySelector<HTMLElement>(".explorer-pane.active");
   const selection = pane
@@ -79,6 +90,7 @@ export function actionContext(): ScoutActionContext {
     selectedPaths: selection.map((entry) => entry.path),
     tabCount: document.querySelectorAll(".tab").length,
     hasActiveTab: !!document.querySelector(".tab.active"),
+    clipboardCount: clipboardCountFromApp(),
   };
 }
 
