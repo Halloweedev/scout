@@ -1,7 +1,6 @@
-import { requestNewTab, requestOpenTab } from "./tab-commands";
+import { requestNewTab } from "./tab-commands";
 
 const DRAG_THRESHOLD = 7;
-const CLOSED_TAB_LIMIT = 20;
 
 interface TabCandidate {
   tab: HTMLElement;
@@ -13,9 +12,10 @@ let observer: MutationObserver | null = null;
 let candidate: TabCandidate | null = null;
 let dragging: HTMLElement | null = null;
 let orderedTabs: HTMLElement[] = [];
+let dragStartOrder: HTMLElement[] = [];
 let suppressClickTab: HTMLElement | null = null;
 let suppressClickUntil = 0;
-let closedTabPaths: string[] = [];
+let reconciling = false;
 
 function tabStrip() {
   return document.querySelector<HTMLElement>(".tab-strip");
@@ -32,27 +32,29 @@ function tabFromTarget(target: EventTarget | null) {
   return target.closest<HTMLElement>(".tab-strip > .tab");
 }
 
-function tabPath(tab: HTMLElement) {
-  return tab.dataset.scoutDropPath
-    ?? (tab.classList.contains("active") ? document.querySelector<HTMLElement>(".explorer-pane.active")?.dataset.panePath : undefined)
-    ?? null;
-}
-
-function rememberClosedTab(tab: HTMLElement) {
-  const path = tabPath(tab);
-  if (!path) return;
-  closedTabPaths.push(path);
-  if (closedTabPaths.length > CLOSED_TAB_LIMIT) closedTabPaths = closedTabPaths.slice(-CLOSED_TAB_LIMIT);
-}
-
-function reopenClosedTab() {
-  const path = closedTabPaths.pop();
-  if (!path) return false;
-  return requestOpenTab(path);
+function sameOrder(left: HTMLElement[], right: HTMLElement[]) {
+  return left.length === right.length && left.every((tab, index) => tab === right[index]);
 }
 
 function syncOrderFromDom() {
   orderedTabs = tabsInDom();
+}
+
+function placeTabsInOrder(order: HTMLElement[]) {
+  const strip = tabStrip();
+  if (!strip) return;
+  const current = tabsInDom();
+  const desired = order.filter((tab) => tab.isConnected && tab.parentElement === strip && current.includes(tab));
+  if (sameOrder(current, desired)) return;
+
+  const newTabButton = strip.querySelector<HTMLElement>(":scope > .new-tab-button");
+  reconciling = true;
+  try {
+    for (const tab of desired) strip.insertBefore(tab, newTabButton);
+    observer?.takeRecords();
+  } finally {
+    reconciling = false;
+  }
 }
 
 function reconcileOrder() {
@@ -70,10 +72,19 @@ function reconcileOrder() {
 
   const connected = orderedTabs.filter((tab) => tab.isConnected && tab.parentElement === strip && current.includes(tab));
   const newTabs = current.filter((tab) => !connected.includes(tab));
-  orderedTabs = [...connected, ...newTabs];
+  const desired = [...connected, ...newTabs];
+  orderedTabs = desired;
+  if (!sameOrder(current, desired)) placeTabsInOrder(desired);
+}
 
-  const newTabButton = strip.querySelector<HTMLElement>(":scope > .new-tab-button");
-  for (const tab of orderedTabs) strip.insertBefore(tab, newTabButton);
+function restoreDragStartOrder() {
+  const current = tabsInDom();
+  if (!dragStartOrder.length || !current.length) return;
+  const restored = dragStartOrder.filter((tab) => current.includes(tab));
+  const additions = current.filter((tab) => !restored.includes(tab));
+  const desired = [...restored, ...additions];
+  placeTabsInOrder(desired);
+  orderedTabs = tabsInDom();
 }
 
 function visualNeighbor(tab: HTMLElement) {
@@ -107,14 +118,16 @@ function endDrag() {
     .forEach((tab) => tab.classList.remove("ux-tab-drop-before", "ux-tab-drop-after"));
   dragging = null;
   candidate = null;
+  dragStartOrder = [];
 }
 
 function beginDrag(tab: HTMLElement) {
+  reconcileOrder();
+  dragStartOrder = [...orderedTabs];
   dragging = tab;
   tab.classList.add("ux-tab-dragging");
   tab.setAttribute("aria-grabbed", "true");
   document.documentElement.classList.add("ux-tab-drag-active");
-  reconcileOrder();
 }
 
 function moveDraggedTab(x: number) {
@@ -135,6 +148,7 @@ function moveDraggedTab(x: number) {
 
   if (before) strip.insertBefore(dragged, target);
   else strip.insertBefore(dragged, target.nextElementSibling);
+  observer?.takeRecords();
   syncOrderFromDom();
 }
 
@@ -163,14 +177,16 @@ function handlePointerUp() {
   const dragged = dragging;
   if (completed && dragged) {
     syncOrderFromDom();
+    const changed = !sameOrder(dragStartOrder, orderedTabs);
     suppressClickTab = dragged;
     suppressClickUntil = performance.now() + 180;
-    window.dispatchEvent(new CustomEvent("scout:tabs-reordered"));
+    if (changed) window.dispatchEvent(new CustomEvent("scout:tabs-reordered"));
   }
   endDrag();
 }
 
 function handlePointerCancel() {
+  if (dragging) restoreDragStartOrder();
   endDrag();
 }
 
@@ -196,10 +212,7 @@ function handleClickCapture(event: MouseEvent) {
   const close = target?.closest<HTMLElement>(".tab-close");
   if (close) {
     const tab = close.closest<HTMLElement>(".tab");
-    if (tab) {
-      rememberClosedTab(tab);
-      prepareActiveClose(tab);
-    }
+    if (tab) prepareActiveClose(tab);
     return;
   }
 
@@ -212,17 +225,18 @@ function handleClickCapture(event: MouseEvent) {
 }
 
 function handleKeyDown(event: KeyboardEvent) {
-  const target = event.target as HTMLElement | null;
-  if (target?.closest("input, textarea, [contenteditable='true']")) return;
-  const modifier = event.metaKey || event.ctrlKey;
-  const key = event.key.toLowerCase();
-
-  if (modifier && event.shiftKey && !event.altKey && key === "t") {
-    if (!reopenClosedTab()) return;
+  if (event.key === "Escape" && dragging) {
+    restoreDragStartOrder();
+    endDrag();
     event.preventDefault();
     event.stopImmediatePropagation();
     return;
   }
+
+  const target = event.target as HTMLElement | null;
+  if (target?.closest("input, textarea, [contenteditable='true']")) return;
+  const modifier = event.metaKey || event.ctrlKey;
+  const key = event.key.toLowerCase();
 
   if (!modifier || event.shiftKey || event.altKey || key !== "w") return;
   const tabs = tabsInDom();
@@ -242,12 +256,19 @@ function installAccessibility() {
 }
 
 function reconcile() {
+  if (dragging || reconciling) return;
   reconcileOrder();
   installAccessibility();
 }
 
 export function installTabDrag() {
-  observer = new MutationObserver(() => queueMicrotask(reconcile));
+  observer = new MutationObserver(() => {
+    if (dragging || reconciling) {
+      observer?.takeRecords();
+      return;
+    }
+    queueMicrotask(reconcile);
+  });
   observer.observe(document.body, { childList: true, subtree: true });
   document.addEventListener("pointerdown", handlePointerDown, true);
   window.addEventListener("pointermove", handlePointerMove, { passive: false });
@@ -260,6 +281,7 @@ export function installTabDrag() {
   queueMicrotask(reconcile);
 
   return () => {
+    if (dragging) restoreDragStartOrder();
     observer?.disconnect();
     observer = null;
     document.removeEventListener("pointerdown", handlePointerDown, true);
@@ -271,9 +293,10 @@ export function installTabDrag() {
     document.removeEventListener("click", handleClickCapture, true);
     window.removeEventListener("keydown", handleKeyDown, true);
     orderedTabs = [];
-    closedTabPaths = [];
+    dragStartOrder = [];
     suppressClickTab = null;
     suppressClickUntil = 0;
+    reconciling = false;
     endDrag();
   };
 }
