@@ -1,0 +1,105 @@
+.destructive-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1600;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.44);
+  backdrop-filter: blur(8px);
+}
+
+.destructive-confirm-panel {
+  width: min(420px, calc(100vw - 48px));
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
+  background: rgba(18, 18, 20, 0.98);
+  box-shadow: 0 26px 80px rgba(0, 0, 0, 0.52), 0 2px 12px rgba(0, 0, 0, 0.28);
+  color: #d9d9dc;
+  animation: destructive-confirm-in 120ms ease-out both;
+}
+
+.destructive-confirm-copy {
+  display: grid;
+  gap: 8px;
+  padding: 20px 20px 16px;
+}
+
+.destructive-confirm-title {
+  margin: 0;
+  color: #f2f2f4;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.destructive-confirm-message,
+.destructive-confirm-detail {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.destructive-confirm-message {
+  color: #b5b5ba;
+  font-size: 12px;
+}
+
+.destructive-confirm-detail {
+  color: #77777d;
+  font-size: 10.5px;
+}
+
+.destructive-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.destructive-confirm-button {
+  min-width: 88px;
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid #2c2c30;
+  border-radius: 7px;
+  background: #1b1b1d;
+  color: #c8c8cc;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 560;
+}
+
+.destructive-confirm-button:hover {
+  border-color: #3b3b40;
+  background: #242427;
+  color: #f1f1f2;
+}
+
+.destructive-confirm-button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.52);
+  outline-offset: 2px;
+}
+
+.destructive-confirm-button.danger {
+  border-color: rgba(226, 100, 100, 0.28);
+  background: rgba(170, 55, 55, 0.30);
+  color: #ffc2c2;
+}
+
+.destructive-confirm-button.danger:hover {
+  border-color: rgba(239, 118, 118, 0.42);
+  background: rgba(184, 62, 62, 0.38);
+  color: #ffe0e0;
+}
+
+@keyframes destructive-confirm-in {
+  from { opacity: 0; transform: translateY(4px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .destructive-confirm-panel { animation: none; }
+}
