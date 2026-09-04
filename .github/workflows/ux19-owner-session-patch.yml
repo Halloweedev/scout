@@ -1,0 +1,517 @@
+name: UX19 owner session patch
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Prepare UX19 owner session patch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Apply UX19 owner session patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          app_path = Path('src/App.tsx')
+          source = app_path.read_text()
+
+          def replace_once(old: str, new: str, label: str):
+              global source
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              'import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";',
+              'import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";',
+              'solid createEffect import',
+          )
+
+          replace_once(
+              'const MAX_ZOOM = 1.4;\n',
+              '''const MAX_ZOOM = 1.4;
+          const TAB_SESSION_KEY = "scout.session.tabs.v1";
+          const SESSION_LAYOUT_KEY = "scout.session.layout.v1";
+          const LAST_LOCATION_KEY = "scout.session.last-location.v1";
+          const TAB_SESSION_LIMIT = 24;
+          const TAB_HISTORY_LIMIT = 80;
+          ''',
+              'session constants',
+          )
+
+          workspace_interface = '''interface SavedWorkspace {
+            id: string;
+            name: string;
+            panePaths: string[];
+            activePaneIndex: number;
+            showHidden: boolean;
+            linkedPanes: boolean;
+            updatedAt: number;
+          }
+          '''
+          replace_once(
+              workspace_interface,
+              workspace_interface + '''
+          interface SavedTab {
+            title: string;
+            path: string;
+            history: string[];
+            historyIndex: number;
+          }
+
+          interface SavedTabSession {
+            tabs: SavedTab[];
+            activeIndex: number;
+            updatedAt: number;
+          }
+
+          interface SavedSessionLayout {
+            panePaths: string[];
+            activePaneIndex: number;
+            updatedAt: number;
+          }
+          ''',
+              'session interfaces',
+          )
+
+          read_zoom = '''function readZoom() {
+            const value = Number.parseFloat(localStorage.getItem(ZOOM_KEY) ?? "");
+            if (!Number.isFinite(value)) return 1;
+            return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+          }
+          '''
+          session_helpers = r'''
+          function sessionComparablePath(path: string) {
+            const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+            return /^[a-zA-Z]:/.test(normalized) ? normalized.toLowerCase() : normalized || "/";
+          }
+
+          function normalizeSavedHistory(path: string, historyValue: unknown, indexValue: unknown) {
+            const history = Array.isArray(historyValue)
+              ? historyValue.filter((entry): entry is string => typeof entry === "string" && !!entry.trim())
+              : [];
+            if (!history.length) history.push(path);
+
+            const numericIndex = Number(indexValue);
+            let historyIndex = Number.isFinite(numericIndex) ? Math.trunc(numericIndex) : history.length - 1;
+            historyIndex = Math.min(Math.max(historyIndex, 0), history.length - 1);
+
+            const maxStart = Math.max(0, history.length - TAB_HISTORY_LIMIT);
+            const preferredStart = Math.max(0, historyIndex - Math.floor(TAB_HISTORY_LIMIT / 2));
+            const start = Math.min(preferredStart, maxStart);
+            const boundedHistory = history.slice(start, start + TAB_HISTORY_LIMIT);
+            historyIndex -= start;
+            boundedHistory[historyIndex] = path;
+            return { history: boundedHistory, historyIndex };
+          }
+
+          function sanitizeSavedTab(value: unknown): SavedTab | null {
+            if (!value || typeof value !== "object") return null;
+            const candidate = value as Partial<SavedTab>;
+            const path = typeof candidate.path === "string" ? candidate.path.trim() : "";
+            if (!path) return null;
+            const normalized = normalizeSavedHistory(path, candidate.history, candidate.historyIndex);
+            return {
+              title: typeof candidate.title === "string" && candidate.title.trim() ? candidate.title.trim() : path,
+              path,
+              history: normalized.history,
+              historyIndex: normalized.historyIndex,
+            };
+          }
+
+          function readTabSession(): SavedTabSession | null {
+            try {
+              const raw = localStorage.getItem(TAB_SESSION_KEY);
+              if (!raw) return null;
+              const value = JSON.parse(raw) as Partial<SavedTabSession>;
+              const tabs = Array.isArray(value.tabs)
+                ? value.tabs.map(sanitizeSavedTab).filter((tab): tab is SavedTab => !!tab).slice(0, TAB_SESSION_LIMIT)
+                : [];
+              if (!tabs.length) return null;
+              const requested = Number(value.activeIndex);
+              const activeIndex = Math.min(Math.max(Number.isFinite(requested) ? Math.trunc(requested) : 0, 0), tabs.length - 1);
+              return { tabs, activeIndex, updatedAt: Number(value.updatedAt) || 0 };
+            } catch {
+              return null;
+            }
+          }
+
+          function readSavedSessionLayout(): SavedSessionLayout | null {
+            try {
+              const raw = localStorage.getItem(SESSION_LAYOUT_KEY);
+              if (!raw) return null;
+              const value = JSON.parse(raw) as Partial<SavedSessionLayout>;
+              const panePaths = Array.isArray(value.panePaths)
+                ? value.panePaths.filter((path): path is string => typeof path === "string" && !!path.trim()).slice(0, 4)
+                : [];
+              if (!panePaths.length) return null;
+              const requested = Number(value.activePaneIndex);
+              const activePaneIndex = Math.min(Math.max(Number.isFinite(requested) ? Math.trunc(requested) : 0, 0), panePaths.length - 1);
+              return { panePaths, activePaneIndex, updatedAt: Number(value.updatedAt) || 0 };
+            } catch {
+              return null;
+            }
+          }
+
+          function persistTabSessionSnapshot(tabList: ExplorerTab[], activeId: string) {
+            if (!tabList.length || !activeId) return;
+            const sourceActiveIndex = tabList.findIndex((tab) => tab.id === activeId);
+            if (sourceActiveIndex < 0) return;
+
+            const maxStart = Math.max(0, tabList.length - TAB_SESSION_LIMIT);
+            const preferredStart = Math.max(0, sourceActiveIndex - Math.floor(TAB_SESSION_LIMIT / 2));
+            const start = Math.min(preferredStart, maxStart);
+            const bounded = tabList.slice(start, start + TAB_SESSION_LIMIT);
+            const tabs = bounded.map((tab) => {
+              const normalized = normalizeSavedHistory(tab.path, tab.history, tab.historyIndex);
+              return {
+                title: tab.title || tab.path,
+                path: tab.path,
+                history: normalized.history,
+                historyIndex: normalized.historyIndex,
+              } satisfies SavedTab;
+            });
+
+            try {
+              localStorage.setItem(TAB_SESSION_KEY, JSON.stringify({
+                tabs,
+                activeIndex: sourceActiveIndex - start,
+                updatedAt: Date.now(),
+              } satisfies SavedTabSession));
+            } catch {
+              // Tab continuity is best-effort and must never block normal browsing.
+            }
+          }
+
+          function persistOwnerSessionLayout(paneList: PaneState[], activeIndex: number) {
+            const panePaths = paneList.slice(0, 4).map((pane) => pane.path).filter(Boolean);
+            if (!panePaths.length) return;
+            const boundedActiveIndex = Math.min(Math.max(activeIndex, 0), panePaths.length - 1);
+            try {
+              localStorage.setItem(SESSION_LAYOUT_KEY, JSON.stringify({
+                panePaths,
+                activePaneIndex: boundedActiveIndex,
+                updatedAt: Date.now(),
+              } satisfies SavedSessionLayout));
+              localStorage.setItem(LAST_LOCATION_KEY, panePaths[boundedActiveIndex] ?? panePaths[0]);
+            } catch {
+              // The live App state remains authoritative if storage is unavailable.
+            }
+          }
+
+          function nearestSourceIndex(entries: Array<{ sourceIndex: number }>, requested: number) {
+            if (!entries.length) return 0;
+            const exact = entries.findIndex((entry) => entry.sourceIndex === requested);
+            if (exact >= 0) return exact;
+            let bestIndex = 0;
+            let bestDistance = Number.POSITIVE_INFINITY;
+            entries.forEach((entry, index) => {
+              const distance = Math.abs(entry.sourceIndex - requested);
+              if (distance < bestDistance) {
+                bestDistance = distance;
+                bestIndex = index;
+              }
+            });
+            return bestIndex;
+          }
+          '''
+          replace_once(read_zoom, read_zoom + session_helpers, 'session helper functions')
+
+          replace_once(
+              '  const sidebarItems = createMemo<SidebarItem[]>(() => {',
+              '''  createEffect(() => {
+            const currentTabs = tabs();
+            const currentActiveId = activeTabId();
+            if (!currentTabs.length || !currentActiveId || !currentTabs.some((tab) => tab.id === currentActiveId)) return;
+            persistTabSessionSnapshot(currentTabs, currentActiveId);
+          });
+
+            const sidebarItems = createMemo<SidebarItem[]>(() => {''',
+              'tab persistence effect',
+          )
+
+          navigate_handler = '''  function handleScoutNavigate(event: Event) {
+            const path = (event as CustomEvent<{ path?: string }>).detail?.path;
+            if (path) void navigate(path);
+          }
+          '''
+          replace_once(
+              navigate_handler,
+              navigate_handler + '''
+            function handleTabsReordered() {
+              const ids = [...document.querySelectorAll<HTMLElement>(".tab-strip > .tab[data-tab-id]")]
+                .map((tab) => tab.dataset.tabId ?? "")
+                .filter(Boolean);
+              const current = tabs();
+              if (ids.length !== current.length) return;
+              const byId = new Map(current.map((tab) => [tab.id, tab]));
+              const reordered = ids.map((id) => byId.get(id)).filter((tab): tab is ExplorerTab => !!tab);
+              if (reordered.length !== current.length) return;
+              if (reordered.every((tab, index) => tab.id === current[index]?.id)) return;
+              setTabs(reordered);
+            }
+
+            function handleTabSessionPageHide() {
+              persistTabSessionSnapshot(tabs(), activeTabId());
+            }
+          ''',
+              'tab reorder handlers',
+          )
+
+          init_start = source.index('  async function initializeApp() {')
+          init_end = source.index('  onMount(() => {', init_start)
+          new_initialize = r'''  async function initializeApp() {
+            setStartupError(null);
+            try {
+              const dirs = await getSpecialDirectories();
+              setSpecial(dirs);
+              const requestedHidden = showHidden();
+              const savedTabs = readTabSession();
+              const savedLayout = readSavedSessionLayout();
+              const listingCache = new Map<string, Promise<DirectoryListing | null>>();
+
+              const listingFor = (path: string) => {
+                const key = sessionComparablePath(path);
+                const existing = listingCache.get(key);
+                if (existing) return existing;
+                const pending = listDirectory(path, requestedHidden).catch(() => null);
+                listingCache.set(key, pending);
+                return pending;
+              };
+
+              const resolvedTabs = await Promise.all((savedTabs?.tabs ?? []).map(async (saved, sourceIndex) => {
+                const candidates: Array<{ path: string; historyIndex: number }> = [];
+                const seen = new Set<string>();
+                const addCandidate = (path: string | undefined, historyIndex: number) => {
+                  const trimmed = path?.trim();
+                  if (!trimmed) return;
+                  const key = sessionComparablePath(trimmed);
+                  if (seen.has(key)) return;
+                  seen.add(key);
+                  candidates.push({ path: trimmed, historyIndex });
+                };
+
+                addCandidate(saved.path, saved.historyIndex);
+                const recoveryRadius = Math.min(12, saved.history.length);
+                for (let distance = 0; distance <= recoveryRadius; distance += 1) {
+                  addCandidate(saved.history[saved.historyIndex - distance], saved.historyIndex - distance);
+                  addCandidate(saved.history[saved.historyIndex + distance], saved.historyIndex + distance);
+                }
+
+                for (const candidate of candidates) {
+                  const listing = await listingFor(candidate.path);
+                  if (!listing) continue;
+                  const normalized = normalizeSavedHistory(listing.path, saved.history, candidate.historyIndex);
+                  return {
+                    sourceIndex,
+                    listing,
+                    tab: {
+                      id: makeId(),
+                      title: listing.displayName,
+                      path: listing.path,
+                      history: normalized.history,
+                      historyIndex: normalized.historyIndex,
+                    } satisfies ExplorerTab,
+                  };
+                }
+                return null;
+              }));
+              const validTabs = resolvedTabs.filter((entry): entry is NonNullable<typeof entry> => !!entry);
+              let activeTabIndex = validTabs.length
+                ? nearestSourceIndex(validTabs, savedTabs?.activeIndex ?? 0)
+                : 0;
+
+              const resolvedPanes = await Promise.all((savedLayout?.panePaths ?? []).slice(0, 4).map(async (path, sourceIndex) => {
+                const listing = await listingFor(path);
+                return listing ? { sourceIndex, listing } : null;
+              }));
+              const validPanes = resolvedPanes.filter((entry): entry is NonNullable<typeof entry> => !!entry);
+              let activePaneIndex = validPanes.length
+                ? nearestSourceIndex(validPanes, savedLayout?.activePaneIndex ?? 0)
+                : 0;
+
+              if (!validPanes.length && validTabs.length) {
+                validPanes.push({ sourceIndex: 0, listing: validTabs[activeTabIndex].listing });
+                activePaneIndex = 0;
+              }
+
+              if (!validPanes.length) {
+                const home = await listingFor(dirs.home);
+                if (!home) throw new Error(`Could not open home folder: ${dirs.home}`);
+                validPanes.push({ sourceIndex: 0, listing: home });
+                activePaneIndex = 0;
+              }
+
+              const focusedListing = validPanes[activePaneIndex].listing;
+              const restoredTabs = validTabs.map((entry) => entry.tab);
+              if (!restoredTabs.length) {
+                const id = makeId();
+                restoredTabs.push({
+                  id,
+                  title: focusedListing.displayName,
+                  path: focusedListing.path,
+                  history: [focusedListing.path],
+                  historyIndex: 0,
+                });
+                activeTabIndex = 0;
+              }
+
+              let restoredActiveTab = restoredTabs[activeTabIndex];
+              if (sessionComparablePath(restoredActiveTab.path) !== sessionComparablePath(focusedListing.path)) {
+                const normalized = normalizeSavedHistory(
+                  focusedListing.path,
+                  restoredActiveTab.history,
+                  restoredActiveTab.historyIndex,
+                );
+                restoredActiveTab = {
+                  ...restoredActiveTab,
+                  title: focusedListing.displayName,
+                  path: focusedListing.path,
+                  history: normalized.history,
+                  historyIndex: normalized.historyIndex,
+                };
+                restoredTabs[activeTabIndex] = restoredActiveTab;
+              }
+
+              const restoredPanes = validPanes.map(({ listing }) => paneFromListing(listing));
+              const focusedPane = restoredPanes[activePaneIndex];
+              focusedPane.history = [...restoredActiveTab.history];
+              focusedPane.historyIndex = restoredActiveTab.historyIndex;
+
+              // Write the owner-resolved layout before publishing DOM state so the
+              // legacy continuity observer sees the same graph and does not replay it.
+              persistOwnerSessionLayout(restoredPanes, activePaneIndex);
+              persistTabSessionSnapshot(restoredTabs, restoredActiveTab.id);
+
+              setPanes(restoredPanes);
+              setActivePaneId(focusedPane.id);
+              setTabs(restoredTabs);
+              setActiveTabId(restoredActiveTab.id);
+              if (viewMode() === "columns") {
+                setColumnRoots(Object.fromEntries(restoredPanes.map((pane) => [pane.id, pane.path])));
+              }
+              setActiveListing(focusedPane.listing);
+
+              for (const pane of restoredPanes) {
+                void hydrateDirectory(pane.path, requestedHidden).then((hydrated) => {
+                  updatePane(pane.id, (candidate) => candidate.path === hydrated.path ? { ...candidate, listing: hydrated } : candidate);
+                  if (activePaneId() === pane.id) setActiveListing(hydrated);
+                }).catch(() => {});
+              }
+
+              void watchDirectory(focusedPane.path).catch((reason) => {
+                updatePane(focusedPane.id, (current) => ({ ...current, error: String(reason) }));
+              });
+            } catch (reason) {
+              setStartupError(String(reason));
+            }
+          }
+
+          '''
+          source = source[:init_start] + new_initialize + source[init_end:]
+
+          replace_once(
+              '    window.addEventListener("scout:navigate", handleScoutNavigate);\n',
+              '    window.addEventListener("scout:navigate", handleScoutNavigate);\n    window.addEventListener("scout:tabs-reordered", handleTabsReordered);\n    window.addEventListener("pagehide", handleTabSessionPageHide);\n',
+              'mount session listeners',
+          )
+          replace_once(
+              '    window.removeEventListener("scout:navigate", handleScoutNavigate);\n',
+              '    window.removeEventListener("scout:navigate", handleScoutNavigate);\n    window.removeEventListener("scout:tabs-reordered", handleTabsReordered);\n    window.removeEventListener("pagehide", handleTabSessionPageHide);\n',
+              'cleanup session listeners',
+          )
+          replace_once(
+              '<button class="tab pile" classList={{ active: tab.id === activeTabId() }}',
+              '<button data-tab-id={tab.id} class="tab pile" classList={{ active: tab.id === activeTabId() }}',
+              'tab model identity',
+          )
+
+          app_path.write_text(source)
+
+          ux12 = Path('docs/UX12_SESSION_CONTINUITY.md')
+          ux12_text = ux12.read_text()
+          old_ux12 = '''## Intentional boundary
+
+          Tabs are still not reconstructed as a multi-pane session graph. Scout's current `ExplorerTab` model stores one active-pane path/history snapshot, while panes are shared outside the tab model. Rebuilding tabs as though each tab owned its own pane layout would change current semantics and is intentionally deferred.
+
+          Saved Workspaces remain explicit user-created layouts and keep their existing semantics. Startup continuity is separate automatic session state and never silently creates or mutates a saved Workspace.
+          '''
+          new_ux12 = '''## Extended by UX 19
+
+          UX19 lifts the previous tab boundary without changing Scout's shared-pane semantics. The App owner now restores the transient pane graph and the `ExplorerTab` list in one startup transaction, including tab order, active tab, current path, history, and history index. The active pane receives the active tab's history; inactive panes remain shared layout state rather than becoming tab-owned pane graphs.
+
+          Saved Workspaces remain explicit user-created layouts and keep their existing semantics. Startup continuity is separate automatic session state and never silently creates or mutates a saved Workspace.
+          '''
+          if old_ux12 not in ux12_text:
+              raise SystemExit('UX12 boundary block not found')
+          ux12.write_text(ux12_text.replace(old_ux12, new_ux12, 1))
+
+          ux16 = Path('docs/UX16_PANE_SESSION_CONTINUITY.md')
+          ux16_text = ux16.read_text()
+          old_ux16 = '''## Intentional boundary
+
+          Tabs remain independent from pane-session restoration. `ExplorerTab` stores one active-pane path/history snapshot, while the multi-pane graph is shared outside the tab model. Reconstructing tabs as though each tab owned a complete pane layout would change current Scout semantics, so UX16 does not do that.
+
+          Saved Workspaces remain explicit named user layouts. Session continuity is automatic transient state and never creates, renames, or mutates a saved Workspace.
+          '''
+          new_ux16 = '''## Superseded startup path
+
+          UX19 moves cold-start reconstruction into the App owner. `scout.session.layout.v1` remains the persisted pane-layout format, but App now validates and publishes the pane graph together with the saved tab model before the legacy continuity observer can replay toolbar/actions. The observer remains responsible for ongoing layout capture, migration fallback, interruption safety, and `pagehide` persistence.
+
+          Tabs still do not own complete pane graphs. Only the active tab's path/history snapshot is attached to the active shared pane, preserving the semantics UX16 established.
+
+          Saved Workspaces remain explicit named user layouts. Session continuity is automatic transient state and never creates, renames, or mutates a saved Workspace.
+          '''
+          if old_ux16 not in ux16_text:
+              raise SystemExit('UX16 boundary block not found')
+          ux16.write_text(ux16_text.replace(old_ux16, new_ux16, 1))
+
+          Path('docs/UX19_TAB_SESSION_CONTINUITY.md').write_text('''# UX 19 — Owner tab session continuity
+
+          Scout now restores ordinary tabs as real `ExplorerTab` model state instead of reopening path-only shells or replaying synthetic tab clicks.
+
+          ## Contract
+
+          - `scout.session.tabs.v1` persists up to 24 recent tabs in visual/model order.
+          - Each persisted tab keeps its current folder, title, up to 80 bounded history entries, and history index.
+          - The active tab index is restored with the tab list.
+          - Cold-start restoration validates saved tab and pane paths through Scout's existing filesystem layer before publishing UI state.
+          - If a saved tab's current folder disappeared, Scout checks nearby entries in that tab's own back/forward history before dropping the tab.
+          - Invalid pane paths are dropped; if the saved active pane disappeared, the nearest surviving pane becomes active.
+          - The pane graph from `scout.session.layout.v1` and the tab model are reconstructed in one App-owned transaction so pane restoration cannot overwrite restored tab history.
+          - The active shared pane receives the active tab's restored history and history index. Other panes remain shared pane state; tabs do not gain private pane graphs.
+          - The owner-resolved pane layout is written before DOM publication so the older continuity observer sees an already-settled graph instead of replaying Add Pane/navigation actions.
+          - Tab drag reordering is reconciled back into App state through stable `data-tab-id` identities, so visual order and model/persisted order cannot diverge.
+          - Tab persistence is reactive to real App tab state changes and also writes a final best-effort snapshot on `pagehide`.
+          - Storage and stale-path failures remain non-fatal; Scout falls back to the nearest valid session state or Home.
+
+          ## Ownership boundary
+
+          `App.tsx` remains the source of truth for tabs, pane focus, and the active tab/pane history relationship. UX19 does not create a parallel tab model and does not mutate saved Workspaces.
+          ''')
+          PY
+
+          git rm .github/workflows/ux19-owner-session-patch.yml
+          git diff --check
+          pnpm install --frozen-lockfile
+          pnpm build
+          git config user.name "Nicolas"
+          git config user.email "halloweed@tutamail.com"
+          git add src/App.tsx docs/UX12_SESSION_CONTINUITY.md docs/UX16_PANE_SESSION_CONTINUITY.md docs/UX19_TAB_SESSION_CONTINUITY.md .github/workflows/ux19-owner-session-patch.yml
+          git commit -m "Implement UX19 owner tab session continuity"
+          git push origin HEAD:main
