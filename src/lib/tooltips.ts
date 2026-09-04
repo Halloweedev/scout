@@ -14,6 +14,7 @@ const WARM_DELAY_MS = 55;
 const WARM_WINDOW_MS = 700;
 const EDGE_GAP = 8;
 const TARGET_GAP = 7;
+const TOOLTIP_ID = "scout-global-tooltip";
 
 interface TooltipCopy {
   text: string;
@@ -23,6 +24,8 @@ interface TooltipCopy {
 let tooltip: HTMLDivElement | null = null;
 let scheduledTarget: HTMLElement | null = null;
 let activeTarget: HTMLElement | null = null;
+let describedTarget: HTMLElement | null = null;
+let previousDescribedBy: string | null = null;
 let showTimer: number | undefined;
 let warmUntil = 0;
 let keyboardIntentUntil = 0;
@@ -78,11 +81,31 @@ function restoreNativeTitle(element: HTMLElement) {
 function ensureTooltip() {
   if (tooltip) return tooltip;
   tooltip = document.createElement("div");
+  tooltip.id = TOOLTIP_ID;
   tooltip.className = "scout-tooltip";
   tooltip.setAttribute("role", "tooltip");
   tooltip.hidden = true;
   document.body.append(tooltip);
   return tooltip;
+}
+
+function clearTooltipDescription() {
+  const target = describedTarget;
+  const previous = previousDescribedBy;
+  describedTarget = null;
+  previousDescribedBy = null;
+  if (!target?.isConnected) return;
+  if (previous === null) target.removeAttribute("aria-describedby");
+  else target.setAttribute("aria-describedby", previous);
+}
+
+function describeTarget(target: HTMLElement) {
+  clearTooltipDescription();
+  describedTarget = target;
+  previousDescribedBy = target.getAttribute("aria-describedby");
+  const ids = (previousDescribedBy ?? "").split(/\s+/).filter(Boolean);
+  if (!ids.includes(TOOLTIP_ID)) ids.push(TOOLTIP_ID);
+  target.setAttribute("aria-describedby", ids.join(" "));
 }
 
 function clearTimer() {
@@ -114,6 +137,7 @@ function hideTooltip(options: { restoreTitle?: boolean; keepWarm?: boolean } = {
   const target = activeTarget ?? scheduledTarget;
   scheduledTarget = null;
   activeTarget = null;
+  clearTooltipDescription();
   if (tooltip) {
     tooltip.hidden = true;
     tooltip.classList.remove("visible");
@@ -143,6 +167,7 @@ function showTooltip(target: HTMLElement) {
   node.classList.add("visible");
   activeTarget = target;
   scheduledTarget = null;
+  describeTarget(target);
   positionTooltip(target);
 }
 
@@ -262,6 +287,8 @@ export function installTooltips() {
     tooltip = null;
     scheduledTarget = null;
     activeTarget = null;
+    describedTarget = null;
+    previousDescribedBy = null;
     pointerHeld = false;
     keyboardIntentUntil = 0;
     warmUntil = 0;
