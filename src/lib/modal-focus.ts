@@ -1,4 +1,15 @@
-const MODAL_SELECTOR = '[role="dialog"], .tag-collection-backdrop > .tag-collection-panel';
+const MODAL_SELECTOR = [
+  '[role="dialog"]',
+  '.tag-collection-backdrop > .tag-collection-panel',
+  '.utility-backdrop > .utility-sheet',
+  '.pdf-backdrop > .pdf-sheet',
+  '.disk-map-backdrop > .disk-map-sheet',
+  '.duplicate-backdrop > .duplicate-sheet',
+  '.converter-backdrop > .converter-sheet',
+  '.similar-backdrop > .similar-sheet',
+  '.automation-backdrop > .automation-sheet',
+  '.global-search-backdrop > .global-search-palette',
+].join(',');
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -8,6 +19,19 @@ const FOCUSABLE_SELECTOR = [
   'textarea:not([disabled])',
   '[tabindex]:not([tabindex="-1"])',
   '[contenteditable="true"]',
+].join(',');
+
+const TITLE_SELECTOR = [
+  'h1',
+  'h2',
+  'h3',
+  '.utility-title',
+  '.pdf-title',
+  '.disk-map-title',
+  '.duplicate-title',
+  '.converter-title',
+  '.similar-title',
+  '.automation-title',
 ].join(',');
 
 interface ModalRecord {
@@ -138,6 +162,13 @@ function restoreManagedAttributes(record: ModalRecord) {
   if (record.addedTabIndex) dialog.removeAttribute('tabindex');
 }
 
+function inferredLabel(dialog: HTMLElement) {
+  const title = dialog.querySelector<HTMLElement>(TITLE_SELECTOR)?.textContent?.trim();
+  if (title) return title;
+  if (dialog.classList.contains('global-search-palette')) return 'Search';
+  return null;
+}
+
 function addDialog(dialog: HTMLElement, restore: HTMLElement | null) {
   const addedRole = !dialog.hasAttribute('role');
   const previousAriaModal = dialog.getAttribute('aria-modal');
@@ -146,9 +177,9 @@ function addDialog(dialog: HTMLElement, restore: HTMLElement | null) {
 
   if (addedRole) dialog.setAttribute('role', 'dialog');
   if (!dialog.hasAttribute('aria-label') && !dialog.hasAttribute('aria-labelledby')) {
-    const heading = dialog.querySelector<HTMLElement>('h1, h2, h3');
-    if (heading?.textContent?.trim()) {
-      dialog.setAttribute('aria-label', heading.textContent.trim());
+    const label = inferredLabel(dialog);
+    if (label) {
+      dialog.setAttribute('aria-label', label);
       addedAriaLabel = true;
     }
   }
