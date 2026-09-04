@@ -124,8 +124,8 @@ function currentPath(context: ScoutActionContext) {
   return context.panePath;
 }
 
-function enabledToolbarControl(label: "Back" | "Forward" | "Up") {
-  const button = document.querySelector<HTMLButtonElement>(`.toolbar button[aria-label="${label}"]`);
+function enabledControl(label: string) {
+  const button = document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
   return !!button && !button.disabled;
 }
 
@@ -312,7 +312,7 @@ function actions(): ScoutAction[] {
       title: "Go Back",
       category: "Navigation",
       shortcut: isMac ? "⌘[" : "Alt+←",
-      available: () => enabledToolbarControl("Back"),
+      available: () => enabledControl("Back"),
       run: () => isMac ? dispatchShortcut("[") : dispatchAltKey("ArrowLeft"),
     },
     {
@@ -320,7 +320,7 @@ function actions(): ScoutAction[] {
       title: "Go Forward",
       category: "Navigation",
       shortcut: isMac ? "⌘]" : "Alt+→",
-      available: () => enabledToolbarControl("Forward"),
+      available: () => enabledControl("Forward"),
       run: () => isMac ? dispatchShortcut("]") : dispatchAltKey("ArrowRight"),
     },
     {
@@ -328,7 +328,7 @@ function actions(): ScoutAction[] {
       title: "Go to Parent Folder",
       category: "Navigation",
       shortcut: isMac ? "⌘↑" : "Alt+↑",
-      available: () => enabledToolbarControl("Up"),
+      available: () => enabledControl("Up"),
       run: () => isMac ? dispatchShortcut("ArrowUp") : dispatchAltKey("ArrowUp"),
     },
     {
@@ -337,6 +337,7 @@ function actions(): ScoutAction[] {
       category: "Navigation",
       shortcut: `${modLabel}L`,
       keywords: ["path", "address", "folder"],
+      available: (context) => !!context.panePath,
       run: () => dispatchShortcut("l"),
     },
     {
@@ -345,6 +346,7 @@ function actions(): ScoutAction[] {
       category: "Navigation",
       shortcut: `${modLabel}F`,
       keywords: ["find", "search"],
+      available: (context) => !!context.panePath,
       run: () => dispatchShortcut("f"),
     },
     {
@@ -368,6 +370,7 @@ function actions(): ScoutAction[] {
       title: "New Tab",
       category: "Tabs",
       shortcut: `${modLabel}T`,
+      available: (context) => context.hasActiveTab,
       run: () => click(".new-tab-button"),
     },
     {
@@ -427,7 +430,7 @@ function actions(): ScoutAction[] {
       title: "Bookmark Current Folder",
       category: "Workspace",
       keywords: ["favorite", "pin", "sidebar"],
-      available: (context) => !!context.panePath,
+      available: () => enabledControl("Bookmark current folder"),
       run: () => click('[aria-label="Bookmark current folder"]'),
     },
     {
