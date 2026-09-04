@@ -139,6 +139,14 @@ function dismiss(menu: HTMLElement, event: KeyboardEvent) {
   window.setTimeout(() => trigger?.focus({ preventScroll: true }), 0);
 }
 
+function restoreTriggerAfterAction(menu: HTMLElement, trigger: HTMLButtonElement | null) {
+  window.setTimeout(() => {
+    if (!trigger?.isConnected) return;
+    if (menu.isConnected && menu.offsetParent !== null) return;
+    trigger.focus({ preventScroll: true });
+  }, 0);
+}
+
 function toolbarTrigger(target: EventTarget | null) {
   if (!(target instanceof HTMLButtonElement)) return null;
   if (!target.matches(".toolbar button[aria-haspopup='menu']")) return null;
@@ -211,7 +219,9 @@ function handleKeyDown(event: KeyboardEvent) {
     event.preventDefault();
     event.stopImmediatePropagation();
     resetTypeahead();
+    const trigger = triggerFor(menu);
     document.activeElement.click();
+    restoreTriggerAfterAction(menu, trigger);
     return;
   }
   if (event.key.length === 1 && event.key !== " " && !event.metaKey && !event.ctrlKey && !event.altKey) {
