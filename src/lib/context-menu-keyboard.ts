@@ -123,20 +123,35 @@ function openKeyboardContextMenu(event: KeyboardEvent) {
   return true;
 }
 
-function dismissKeyboardMenu(event: KeyboardEvent) {
+function dismissKeyboardMenu(event: KeyboardEvent, menu: HTMLElement) {
   const row = selectedContextRow();
-  const focusTarget = row?.closest<HTMLElement>(".file-area") ?? null;
+  const focusTarget = row?.closest<HTMLElement>(".file-area")
+    ?? document.querySelector<HTMLElement>(".explorer-pane.active .file-area");
   event.preventDefault();
   event.stopImmediatePropagation();
   resetTypeahead();
 
-  // App owns the context-menu state and already closes it on outside clicks.
-  // Reuse that path instead of removing Solid-owned DOM behind its back.
-  document.body.dispatchEvent(new MouseEvent("click", {
-    bubbles: true,
-    cancelable: true,
-    view: window,
-  }));
+  if (menu.classList.contains("scout-background-context-menu")) {
+    // Folder-background menus are DOM-owned by background-context-menu.ts and
+    // close on outside pointerdown. Reuse that owner path rather than the
+    // Solid/App context-menu click path used by item menus.
+    document.body.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      pointerId: 1,
+      pointerType: "mouse",
+    }));
+  } else {
+    // App owns the normal item context-menu state and already closes it on
+    // outside clicks. Reuse that state path instead of removing Solid-owned
+    // DOM behind its back.
+    document.body.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+    }));
+  }
 
   window.setTimeout(() => focusTarget?.focus({ preventScroll: true }), 0);
 }
@@ -203,7 +218,7 @@ function handleKeyDown(event: KeyboardEvent) {
   }
 
   if (event.key === "Escape") {
-    dismissKeyboardMenu(event);
+    dismissKeyboardMenu(event, menu);
     return;
   }
   if (event.key === "ArrowDown") {
