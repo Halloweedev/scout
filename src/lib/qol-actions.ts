@@ -1,5 +1,6 @@
 import { createFolder, moveEntries, openEntry } from "./fs";
 import { registerActions, type ScoutAction, type ScoutActionContext } from "./actions";
+import { requestNewTab, requestOpenTab } from "./tab-commands";
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 const modLabel = isMac ? "⌘" : "Ctrl+";
@@ -92,11 +93,6 @@ function oneDirectory(context: ScoutActionContext) {
   return context.selection.length === 1 && context.selection[0].kind === "directory";
 }
 
-function selectedRow(path: string) {
-  return [...document.querySelectorAll<HTMLElement>(".explorer-pane.active .pane-file-row")]
-    .find((row) => row.dataset.entryPath === path) ?? null;
-}
-
 function click(selector: string) {
   const element = document.querySelector<HTMLElement>(selector);
   if (!element) throw new Error("That Scout control is not available here");
@@ -105,9 +101,7 @@ function click(selector: string) {
 
 function openDirectoryInNewTab(context: ScoutActionContext) {
   const entry = context.selection[0];
-  const row = selectedRow(entry.path);
-  if (!row) throw new Error("The selected folder is no longer visible");
-  row.dispatchEvent(new MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }));
+  if (!requestOpenTab(entry.path)) throw new Error("Could not open the selected folder in a new tab");
 }
 
 async function closeOtherTabs() {
@@ -371,7 +365,9 @@ function actions(): ScoutAction[] {
       category: "Tabs",
       shortcut: `${modLabel}T`,
       available: (context) => context.hasActiveTab,
-      run: () => click(".new-tab-button"),
+      run: () => {
+        if (!requestNewTab()) throw new Error("Could not open a new tab");
+      },
     },
     {
       id: "tabs.close",
