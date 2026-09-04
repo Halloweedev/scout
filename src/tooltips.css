@@ -1,0 +1,37 @@
+.scout-tooltip {
+  position: fixed;
+  z-index: 2200;
+  max-width: min(280px, calc(100vw - 16px));
+  padding: 5px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 6px;
+  background: rgba(23, 23, 25, 0.97);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.34), 0 1px 4px rgba(0, 0, 0, 0.28);
+  color: #d8d8dc;
+  font-size: 10.5px;
+  font-weight: 520;
+  line-height: 1.35;
+  letter-spacing: -0.005em;
+  pointer-events: none;
+  white-space: normal;
+  opacity: 0;
+  transform: translateY(-2px) scale(0.99);
+  transition: opacity 90ms ease-out, transform 90ms ease-out;
+}
+
+.scout-tooltip.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.scout-tooltip[data-placement="top"] {
+  transform-origin: center bottom;
+}
+
+.scout-tooltip[data-placement="bottom"] {
+  transform-origin: center top;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scout-tooltip { transition: none; }
+}

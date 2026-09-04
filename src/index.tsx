@@ -58,6 +58,7 @@ import { installTabScroll } from "./lib/tab-scroll";
 import { installTagCollections } from "./lib/tag-collections";
 import { installTags } from "./lib/tags";
 import { installTerminalActions } from "./lib/terminal-actions";
+import { installTooltips } from "./lib/tooltips";
 import { installToolbarMenuKeyboard } from "./lib/toolbar-menu-keyboard";
 import { installUtilities } from "./lib/utilities";
 import { installUxInteractions } from "./lib/ux-interactions";
@@ -104,6 +105,7 @@ import "./breadcrumb-scroll.css";
 import "./context-menu-keyboard.css";
 import "./list-column-resize.css";
 import "./tab-accessibility.css";
+import "./tooltips.css";
 
 const root = document.getElementById("root");
 
@@ -112,6 +114,7 @@ if (!root) {
 }
 
 const modalFocusCleanup = installModalFocusContract();
+const tooltipCleanup = installTooltips();
 const actionRegistryCleanup = installActionRegistry();
 const qolActionsCleanup = installQolActions();
 const qolBridgeCleanup = installQolBridge();
@@ -236,6 +239,7 @@ if (import.meta.hot) {
     qolBridgeCleanup();
     qolActionsCleanup();
     actionRegistryCleanup();
+    tooltipCleanup();
     modalFocusCleanup();
     void nativeDropCleanup.then((cleanup) => cleanup());
   });

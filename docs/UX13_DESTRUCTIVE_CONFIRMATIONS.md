@@ -1,4 +1,4 @@
-# UX 12 — Destructive confirmation
+# UX 13 — Destructive confirmation
 
 Scout uses one in-app confirmation surface for irreversible or data-losing actions instead of browser-native `window.confirm` dialogs.
 
@@ -13,4 +13,4 @@ Scout uses one in-app confirmation surface for irreversible or data-losing actio
 - Destructive styling is intentionally restrained and reserved for the actual confirmation button.
 - Existing action ownership is preserved: the confirmation layer decides only whether the caller may continue; filesystem and Git modules still own their mutations, refreshes, and feedback.
 
-UX 12 removes Scout's remaining browser-native `window.confirm` calls and gives destructive actions the same interaction contract as the rest of the app.
+UX 13 removes Scout's remaining browser-native `window.confirm` calls and gives destructive actions the same interaction contract as the rest of the app.
