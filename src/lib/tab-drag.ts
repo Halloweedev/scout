@@ -1,3 +1,4 @@
+import { registerActions } from "./actions";
 import { requestNewTab } from "./tab-commands";
 
 const DRAG_THRESHOLD = 7;
@@ -7,6 +8,8 @@ interface TabCandidate {
   startX: number;
   startY: number;
 }
+
+type TabReorderTarget = "left" | "right" | "first" | "last";
 
 let observer: MutationObserver | null = null;
 let candidate: TabCandidate | null = null;
@@ -25,6 +28,10 @@ function tabsInDom() {
   const strip = tabStrip();
   if (!strip) return [];
   return [...strip.querySelectorAll<HTMLElement>(":scope > .tab")];
+}
+
+function activeTab() {
+  return tabsInDom().find((tab) => tab.classList.contains("active")) ?? null;
 }
 
 function tabFromTarget(target: EventTarget | null) {
@@ -85,6 +92,50 @@ function restoreDragStartOrder() {
   const desired = [...restored, ...additions];
   placeTabsInOrder(desired);
   orderedTabs = tabsInDom();
+}
+
+function reorderedTabs(tab: HTMLElement, target: TabReorderTarget) {
+  reconcileOrder();
+  const current = [...orderedTabs];
+  const from = current.indexOf(tab);
+  if (from < 0 || current.length < 2) return null;
+
+  let to = from;
+  if (target === "left") to = Math.max(0, from - 1);
+  else if (target === "right") to = Math.min(current.length - 1, from + 1);
+  else if (target === "first") to = 0;
+  else to = current.length - 1;
+  if (to === from) return null;
+
+  current.splice(from, 1);
+  current.splice(to, 0, tab);
+  return current;
+}
+
+function canReorderTab(target: TabReorderTarget, tab = activeTab()) {
+  return !!tab && !!reorderedTabs(tab, target);
+}
+
+function requestTabReorder(target: TabReorderTarget, tab = activeTab()) {
+  if (!tab || dragging) return false;
+  const desired = reorderedTabs(tab, target);
+  if (!desired) return false;
+  const tabId = tab.dataset.tabId;
+  placeTabsInOrder(desired);
+  orderedTabs = desired;
+  observer?.takeRecords();
+  window.dispatchEvent(new CustomEvent("scout:tabs-reordered", {
+    detail: { source: "command", tabId: tabId ?? null },
+  }));
+  queueMicrotask(() => {
+    const current = tabId
+      ? tabsInDom().find((candidate) => candidate.dataset.tabId === tabId) ?? tab
+      : tab;
+    if (!current.isConnected) return;
+    current.focus({ preventScroll: true });
+    current.scrollIntoView({ block: "nearest", inline: "nearest" });
+  });
+  return true;
 }
 
 function visualNeighbor(tab: HTMLElement) {
@@ -233,6 +284,16 @@ function handleKeyDown(event: KeyboardEvent) {
     return;
   }
 
+  const focusedTab = tabFromTarget(event.target);
+  if (focusedTab && event.altKey && event.shiftKey && !event.metaKey && !event.ctrlKey
+    && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+    if (requestTabReorder(event.key === "ArrowLeft" ? "left" : "right", focusedTab)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+    return;
+  }
+
   const target = event.target as HTMLElement | null;
   if (target?.closest("input, textarea, [contenteditable='true']")) return;
   const modifier = event.metaKey || event.ctrlKey;
@@ -262,6 +323,43 @@ function reconcile() {
 }
 
 export function installTabDrag() {
+  const unregisterActions = registerActions([
+    {
+      id: "tabs.move-left",
+      title: "Move Active Tab Left",
+      category: "Tabs",
+      keywords: ["reorder", "shift", "tab", "left"],
+      shortcut: "⇧⌥← / Alt+Shift+←",
+      available: () => canReorderTab("left"),
+      run: () => { requestTabReorder("left"); },
+    },
+    {
+      id: "tabs.move-right",
+      title: "Move Active Tab Right",
+      category: "Tabs",
+      keywords: ["reorder", "shift", "tab", "right"],
+      shortcut: "⇧⌥→ / Alt+Shift+→",
+      available: () => canReorderTab("right"),
+      run: () => { requestTabReorder("right"); },
+    },
+    {
+      id: "tabs.move-first",
+      title: "Move Active Tab to Start",
+      category: "Tabs",
+      keywords: ["reorder", "first", "start", "tab"],
+      available: () => canReorderTab("first"),
+      run: () => { requestTabReorder("first"); },
+    },
+    {
+      id: "tabs.move-last",
+      title: "Move Active Tab to End",
+      category: "Tabs",
+      keywords: ["reorder", "last", "end", "tab"],
+      available: () => canReorderTab("last"),
+      run: () => { requestTabReorder("last"); },
+    },
+  ]);
+
   observer = new MutationObserver(() => {
     if (dragging || reconciling) {
       observer?.takeRecords();
@@ -281,6 +379,7 @@ export function installTabDrag() {
   queueMicrotask(reconcile);
 
   return () => {
+    unregisterActions();
     if (dragging) restoreDragStartOrder();
     observer?.disconnect();
     observer = null;
