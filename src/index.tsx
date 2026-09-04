@@ -23,6 +23,7 @@ import { installImageTools } from "./lib/image-tools";
 import { installInspector } from "./lib/inspector";
 import { installInternalPointerDrag } from "./lib/internal-drag";
 import { installListColumnResize } from "./lib/list-column-resize";
+import { installModalFocusContract } from "./lib/modal-focus";
 import { installMouseNavigation } from "./lib/mouse-navigation";
 import { installNativeFileDrop } from "./lib/native-drop";
 import { installNavigationGestures } from "./lib/navigation-gestures";
@@ -108,6 +109,7 @@ if (!root) {
   throw new Error("Scout root element was not found");
 }
 
+const modalFocusCleanup = installModalFocusContract();
 const actionRegistryCleanup = installActionRegistry();
 const qolActionsCleanup = installQolActions();
 const qolBridgeCleanup = installQolBridge();
@@ -228,6 +230,7 @@ if (import.meta.hot) {
     qolBridgeCleanup();
     qolActionsCleanup();
     actionRegistryCleanup();
+    modalFocusCleanup();
     void nativeDropCleanup.then((cleanup) => cleanup());
   });
 }
