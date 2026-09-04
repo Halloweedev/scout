@@ -30,13 +30,20 @@ function keyboardTarget(event: KeyboardEvent) {
     : document.activeElement instanceof Element ? document.activeElement : null;
 }
 
+function embeddedFileControl(target: Element | null) {
+  if (!target) return false;
+  if (target.closest(".pane-file-row[data-entry-path]")) return false;
+  return !!target.closest("input, textarea, select, button, a[href], [contenteditable='true'], [role='button'], [role='separator'], [role='menuitem']");
+}
+
 function activeFileSurfaceOwnsFocus(event: KeyboardEvent) {
   if (!event.isTrusted) return true;
   const target = keyboardTarget(event);
   if (!target) return false;
   const pane = target.closest<HTMLElement>(".explorer-pane");
   if (!pane?.classList.contains("active")) return false;
-  return !!target.closest(".file-area, .column-browser-list");
+  if (!target.closest(".file-area, .column-browser-list")) return false;
+  return !embeddedFileControl(target);
 }
 
 function activePane() {
@@ -301,11 +308,14 @@ function handleChromeKeyDown(event: KeyboardEvent) {
 function handlePointerDown(event: PointerEvent) {
   const target = event.target instanceof Element ? event.target : null;
   const row = target?.closest<HTMLElement>(".pane-file-row") ?? null;
+  const area = target?.closest<HTMLElement>(".file-area, .column-browser-list") ?? null;
   if (row) {
+    if (area && !embeddedFileControl(target)) area.focus({ preventScroll: true });
     cursorPath = row.dataset.entryPath ?? null;
     return;
   }
-  if (target?.closest(".file-area, .column-browser-list")) {
+  if (area && !embeddedFileControl(target)) {
+    area.focus({ preventScroll: true });
     lastSnapshot = null;
     markCursor(null);
   }
