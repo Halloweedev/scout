@@ -16,8 +16,10 @@ Scout now restores the ordinary multi-pane browsing layout from the previous lau
 - The settled pane graph is updated as panes are focused, navigated, added, or removed and is written once more on `pagehide`.
 - Storage/action failures are non-fatal; Scout keeps the live layout it successfully reached.
 
-## Intentional boundary
+## Superseded startup path
 
-Tabs remain independent from pane-session restoration. `ExplorerTab` stores one active-pane path/history snapshot, while the multi-pane graph is shared outside the tab model. Reconstructing tabs as though each tab owned a complete pane layout would change current Scout semantics, so UX16 does not do that.
+UX19 moves cold-start reconstruction into the App owner. `scout.session.layout.v1` remains the persisted pane-layout format, but App now validates and publishes the pane graph together with the saved tab model before the legacy continuity observer can replay toolbar/actions. The observer remains responsible for ongoing layout capture, migration fallback, interruption safety, and `pagehide` persistence.
+
+Tabs still do not own complete pane graphs. Only the active tab's path/history snapshot is attached to the active shared pane, preserving the semantics UX16 established.
 
 Saved Workspaces remain explicit named user layouts. Session continuity is automatic transient state and never creates, renames, or mutates a saved Workspace.

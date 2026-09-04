@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { For, Show, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import Icon, { type IconName } from "./components/Icon";
 import ColumnBrowser from "./components/ColumnBrowser";
 import {
@@ -27,6 +27,11 @@ const SHOW_HIDDEN_KEY = "scout.show-hidden.v1";
 const ZOOM_KEY = "scout.zoom.v1";
 const MIN_ZOOM = 0.85;
 const MAX_ZOOM = 1.4;
+const TAB_SESSION_KEY = "scout.session.tabs.v1";
+const SESSION_LAYOUT_KEY = "scout.session.layout.v1";
+const LAST_LOCATION_KEY = "scout.session.last-location.v1";
+const TAB_SESSION_LIMIT = 24;
+const TAB_HISTORY_LIMIT = 80;
 
 type ViewMode = "icons" | "list" | "columns" | "gallery";
 
@@ -81,6 +86,25 @@ interface SavedWorkspace {
   updatedAt: number;
 }
 
+interface SavedTab {
+  title: string;
+  path: string;
+  history: string[];
+  historyIndex: number;
+}
+
+interface SavedTabSession {
+  tabs: SavedTab[];
+  activeIndex: number;
+  updatedAt: number;
+}
+
+interface SavedSessionLayout {
+  panePaths: string[];
+  activePaneIndex: number;
+  updatedAt: number;
+}
+
 const makeId = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 
 function readWorkspaces(): SavedWorkspace[] {
@@ -113,6 +137,140 @@ function readZoom() {
   const value = Number.parseFloat(localStorage.getItem(ZOOM_KEY) ?? "");
   if (!Number.isFinite(value)) return 1;
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+}
+
+function sessionComparablePath(path: string) {
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  return /^[a-zA-Z]:/.test(normalized) ? normalized.toLowerCase() : normalized || "/";
+}
+
+function normalizeSavedHistory(path: string, historyValue: unknown, indexValue: unknown) {
+  const history = Array.isArray(historyValue)
+    ? historyValue.filter((entry): entry is string => typeof entry === "string" && !!entry.trim())
+    : [];
+  if (!history.length) history.push(path);
+
+  const numericIndex = Number(indexValue);
+  let historyIndex = Number.isFinite(numericIndex) ? Math.trunc(numericIndex) : history.length - 1;
+  historyIndex = Math.min(Math.max(historyIndex, 0), history.length - 1);
+
+  const maxStart = Math.max(0, history.length - TAB_HISTORY_LIMIT);
+  const preferredStart = Math.max(0, historyIndex - Math.floor(TAB_HISTORY_LIMIT / 2));
+  const start = Math.min(preferredStart, maxStart);
+  const boundedHistory = history.slice(start, start + TAB_HISTORY_LIMIT);
+  historyIndex -= start;
+  boundedHistory[historyIndex] = path;
+  return { history: boundedHistory, historyIndex };
+}
+
+function sanitizeSavedTab(value: unknown): SavedTab | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<SavedTab>;
+  const path = typeof candidate.path === "string" ? candidate.path.trim() : "";
+  if (!path) return null;
+  const normalized = normalizeSavedHistory(path, candidate.history, candidate.historyIndex);
+  return {
+    title: typeof candidate.title === "string" && candidate.title.trim() ? candidate.title.trim() : path,
+    path,
+    history: normalized.history,
+    historyIndex: normalized.historyIndex,
+  };
+}
+
+function readTabSession(): SavedTabSession | null {
+  try {
+    const raw = localStorage.getItem(TAB_SESSION_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<SavedTabSession>;
+    const tabs = Array.isArray(value.tabs)
+      ? value.tabs.map(sanitizeSavedTab).filter((tab): tab is SavedTab => !!tab).slice(0, TAB_SESSION_LIMIT)
+      : [];
+    if (!tabs.length) return null;
+    const requested = Number(value.activeIndex);
+    const activeIndex = Math.min(Math.max(Number.isFinite(requested) ? Math.trunc(requested) : 0, 0), tabs.length - 1);
+    return { tabs, activeIndex, updatedAt: Number(value.updatedAt) || 0 };
+  } catch {
+    return null;
+  }
+}
+
+function readSavedSessionLayout(): SavedSessionLayout | null {
+  try {
+    const raw = localStorage.getItem(SESSION_LAYOUT_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<SavedSessionLayout>;
+    const panePaths = Array.isArray(value.panePaths)
+      ? value.panePaths.filter((path): path is string => typeof path === "string" && !!path.trim()).slice(0, 4)
+      : [];
+    if (!panePaths.length) return null;
+    const requested = Number(value.activePaneIndex);
+    const activePaneIndex = Math.min(Math.max(Number.isFinite(requested) ? Math.trunc(requested) : 0, 0), panePaths.length - 1);
+    return { panePaths, activePaneIndex, updatedAt: Number(value.updatedAt) || 0 };
+  } catch {
+    return null;
+  }
+}
+
+function persistTabSessionSnapshot(tabList: ExplorerTab[], activeId: string) {
+  if (!tabList.length || !activeId) return;
+  const sourceActiveIndex = tabList.findIndex((tab) => tab.id === activeId);
+  if (sourceActiveIndex < 0) return;
+
+  const maxStart = Math.max(0, tabList.length - TAB_SESSION_LIMIT);
+  const preferredStart = Math.max(0, sourceActiveIndex - Math.floor(TAB_SESSION_LIMIT / 2));
+  const start = Math.min(preferredStart, maxStart);
+  const bounded = tabList.slice(start, start + TAB_SESSION_LIMIT);
+  const tabs = bounded.map((tab) => {
+    const normalized = normalizeSavedHistory(tab.path, tab.history, tab.historyIndex);
+    return {
+      title: tab.title || tab.path,
+      path: tab.path,
+      history: normalized.history,
+      historyIndex: normalized.historyIndex,
+    } satisfies SavedTab;
+  });
+
+  try {
+    localStorage.setItem(TAB_SESSION_KEY, JSON.stringify({
+      tabs,
+      activeIndex: sourceActiveIndex - start,
+      updatedAt: Date.now(),
+    } satisfies SavedTabSession));
+  } catch {
+    // Tab continuity is best-effort and must never block normal browsing.
+  }
+}
+
+function persistOwnerSessionLayout(paneList: PaneState[], activeIndex: number) {
+  const panePaths = paneList.slice(0, 4).map((pane) => pane.path).filter(Boolean);
+  if (!panePaths.length) return;
+  const boundedActiveIndex = Math.min(Math.max(activeIndex, 0), panePaths.length - 1);
+  try {
+    localStorage.setItem(SESSION_LAYOUT_KEY, JSON.stringify({
+      panePaths,
+      activePaneIndex: boundedActiveIndex,
+      updatedAt: Date.now(),
+    } satisfies SavedSessionLayout));
+    localStorage.setItem(LAST_LOCATION_KEY, panePaths[boundedActiveIndex] ?? panePaths[0]);
+  } catch {
+    // The live App state remains authoritative if storage is unavailable.
+  }
+}
+
+function nearestSourceIndex(entries: Array<{ sourceIndex: number }>, requested: number) {
+  if (!entries.length) return 0;
+  const exact = entries.findIndex((entry) => entry.sourceIndex === requested);
+  if (exact >= 0) return exact;
+  let bestIndex = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  entries.forEach((entry, index) => {
+    const distance = Math.abs(entry.sourceIndex - requested);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  });
+  return bestIndex;
 }
 
 function formatBytes(value: number | null) {
@@ -271,6 +429,13 @@ export default function App() {
     const pane = activePane();
     return !!pane && pane.historyIndex < pane.history.length - 1;
   });
+
+  createEffect(() => {
+  const currentTabs = tabs();
+  const currentActiveId = activeTabId();
+  if (!currentTabs.length || !currentActiveId || !currentTabs.some((tab) => tab.id === currentActiveId)) return;
+  persistTabSessionSnapshot(currentTabs, currentActiveId);
+});
 
   const sidebarItems = createMemo<SidebarItem[]>(() => {
     const dirs = special();
@@ -1208,37 +1373,176 @@ export default function App() {
     if (path) void navigate(path);
   }
 
+  function handleTabsReordered() {
+  const ids = [...document.querySelectorAll<HTMLElement>(".tab-strip > .tab[data-tab-id]")]
+    .map((tab) => tab.dataset.tabId ?? "")
+    .filter(Boolean);
+  const current = tabs();
+  if (ids.length !== current.length) return;
+  const byId = new Map(current.map((tab) => [tab.id, tab]));
+  const reordered = ids.map((id) => byId.get(id)).filter((tab): tab is ExplorerTab => !!tab);
+  if (reordered.length !== current.length) return;
+  if (reordered.every((tab, index) => tab.id === current[index]?.id)) return;
+  setTabs(reordered);
+}
+
+function handleTabSessionPageHide() {
+  persistTabSessionSnapshot(tabs(), activeTabId());
+}
+
   async function initializeApp() {
-    setStartupError(null);
-    try {
-      const dirs = await getSpecialDirectories();
-      setSpecial(dirs);
-      const first = await listDirectory(dirs.home, showHidden());
-      const pane = paneFromListing(first);
-      const tabId = makeId();
-      setPanes([pane]);
-      setActivePaneId(pane.id);
-      setTabs([{ id: tabId, title: first.displayName, path: first.path, history: [first.path], historyIndex: 0 }]);
-      setActiveTabId(tabId);
-      setActiveListing(first);
-      void hydrateDirectory(first.path, showHidden()).then((hydrated) => {
-        const active = activePaneId();
-        if (!active) return;
-        updatePane(active, (candidate) => candidate.path === hydrated.path ? { ...candidate, listing: hydrated } : candidate);
-        if (paneById(active)?.path === hydrated.path) setActiveListing(hydrated);
-      }).catch(() => {});
-      void watchDirectory(first.path).catch((reason) => {
-        updatePane(pane.id, (current) => ({ ...current, error: String(reason) }));
-      });
-    } catch (reason) {
-      setStartupError(String(reason));
+  setStartupError(null);
+  try {
+    const dirs = await getSpecialDirectories();
+    setSpecial(dirs);
+    const requestedHidden = showHidden();
+    const savedTabs = readTabSession();
+    const savedLayout = readSavedSessionLayout();
+    const listingCache = new Map<string, Promise<DirectoryListing | null>>();
+
+    const listingFor = (path: string) => {
+      const key = sessionComparablePath(path);
+      const existing = listingCache.get(key);
+      if (existing) return existing;
+      const pending = listDirectory(path, requestedHidden).catch(() => null);
+      listingCache.set(key, pending);
+      return pending;
+    };
+
+    const resolvedTabs = await Promise.all((savedTabs?.tabs ?? []).map(async (saved, sourceIndex) => {
+      const candidates: Array<{ path: string; historyIndex: number }> = [];
+      const seen = new Set<string>();
+      const addCandidate = (path: string | undefined, historyIndex: number) => {
+        const trimmed = path?.trim();
+        if (!trimmed) return;
+        const key = sessionComparablePath(trimmed);
+        if (seen.has(key)) return;
+        seen.add(key);
+        candidates.push({ path: trimmed, historyIndex });
+      };
+
+      addCandidate(saved.path, saved.historyIndex);
+      const recoveryRadius = Math.min(12, saved.history.length);
+      for (let distance = 0; distance <= recoveryRadius; distance += 1) {
+        addCandidate(saved.history[saved.historyIndex - distance], saved.historyIndex - distance);
+        addCandidate(saved.history[saved.historyIndex + distance], saved.historyIndex + distance);
+      }
+
+      for (const candidate of candidates) {
+        const listing = await listingFor(candidate.path);
+        if (!listing) continue;
+        const normalized = normalizeSavedHistory(listing.path, saved.history, candidate.historyIndex);
+        return {
+          sourceIndex,
+          listing,
+          tab: {
+            id: makeId(),
+            title: listing.displayName,
+            path: listing.path,
+            history: normalized.history,
+            historyIndex: normalized.historyIndex,
+          } satisfies ExplorerTab,
+        };
+      }
+      return null;
+    }));
+    const validTabs = resolvedTabs.filter((entry): entry is NonNullable<typeof entry> => !!entry);
+    let activeTabIndex = validTabs.length
+      ? nearestSourceIndex(validTabs, savedTabs?.activeIndex ?? 0)
+      : 0;
+
+    const resolvedPanes = await Promise.all((savedLayout?.panePaths ?? []).slice(0, 4).map(async (path, sourceIndex) => {
+      const listing = await listingFor(path);
+      return listing ? { sourceIndex, listing } : null;
+    }));
+    const validPanes = resolvedPanes.filter((entry): entry is NonNullable<typeof entry> => !!entry);
+    let activePaneIndex = validPanes.length
+      ? nearestSourceIndex(validPanes, savedLayout?.activePaneIndex ?? 0)
+      : 0;
+
+    if (!validPanes.length && validTabs.length) {
+      validPanes.push({ sourceIndex: 0, listing: validTabs[activeTabIndex].listing });
+      activePaneIndex = 0;
     }
+
+    if (!validPanes.length) {
+      const home = await listingFor(dirs.home);
+      if (!home) throw new Error(`Could not open home folder: ${dirs.home}`);
+      validPanes.push({ sourceIndex: 0, listing: home });
+      activePaneIndex = 0;
+    }
+
+    const focusedListing = validPanes[activePaneIndex].listing;
+    const restoredTabs = validTabs.map((entry) => entry.tab);
+    if (!restoredTabs.length) {
+      const id = makeId();
+      restoredTabs.push({
+        id,
+        title: focusedListing.displayName,
+        path: focusedListing.path,
+        history: [focusedListing.path],
+        historyIndex: 0,
+      });
+      activeTabIndex = 0;
+    }
+
+    let restoredActiveTab = restoredTabs[activeTabIndex];
+    if (sessionComparablePath(restoredActiveTab.path) !== sessionComparablePath(focusedListing.path)) {
+      const normalized = normalizeSavedHistory(
+        focusedListing.path,
+        restoredActiveTab.history,
+        restoredActiveTab.historyIndex,
+      );
+      restoredActiveTab = {
+        ...restoredActiveTab,
+        title: focusedListing.displayName,
+        path: focusedListing.path,
+        history: normalized.history,
+        historyIndex: normalized.historyIndex,
+      };
+      restoredTabs[activeTabIndex] = restoredActiveTab;
+    }
+
+    const restoredPanes = validPanes.map(({ listing }) => paneFromListing(listing));
+    const focusedPane = restoredPanes[activePaneIndex];
+    focusedPane.history = [...restoredActiveTab.history];
+    focusedPane.historyIndex = restoredActiveTab.historyIndex;
+
+    // Write the owner-resolved layout before publishing DOM state so the
+    // legacy continuity observer sees the same graph and does not replay it.
+    persistOwnerSessionLayout(restoredPanes, activePaneIndex);
+    persistTabSessionSnapshot(restoredTabs, restoredActiveTab.id);
+
+    setPanes(restoredPanes);
+    setActivePaneId(focusedPane.id);
+    setTabs(restoredTabs);
+    setActiveTabId(restoredActiveTab.id);
+    if (viewMode() === "columns") {
+      setColumnRoots(Object.fromEntries(restoredPanes.map((pane) => [pane.id, pane.path])));
+    }
+    setActiveListing(focusedPane.listing);
+
+    for (const pane of restoredPanes) {
+      void hydrateDirectory(pane.path, requestedHidden).then((hydrated) => {
+        updatePane(pane.id, (candidate) => candidate.path === hydrated.path ? { ...candidate, listing: hydrated } : candidate);
+        if (activePaneId() === pane.id) setActiveListing(hydrated);
+      }).catch(() => {});
+    }
+
+    void watchDirectory(focusedPane.path).catch((reason) => {
+      updatePane(focusedPane.id, (current) => ({ ...current, error: String(reason) }));
+    });
+  } catch (reason) {
+    setStartupError(String(reason));
   }
+}
 
   onMount(() => {
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("click", closeContextMenu);
     window.addEventListener("scout:navigate", handleScoutNavigate);
+    window.addEventListener("scout:tabs-reordered", handleTabsReordered);
+    window.addEventListener("pagehide", handleTabSessionPageHide);
     void listen("scout-fs-change", scheduleFilesystemRefresh)
       .then((cleanup) => { stopFilesystemListener = cleanup; })
       .catch(() => {
@@ -1251,6 +1555,8 @@ export default function App() {
     window.removeEventListener("keydown", handleKeyDown);
     window.removeEventListener("click", closeContextMenu);
     window.removeEventListener("scout:navigate", handleScoutNavigate);
+    window.removeEventListener("scout:tabs-reordered", handleTabsReordered);
+    window.removeEventListener("pagehide", handleTabSessionPageHide);
     stopFilesystemListener?.();
     if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
   });
@@ -1433,7 +1739,7 @@ export default function App() {
 
         <div class="tab-strip piles">
           <For each={tabs()}>{(tab, idx) => (
-            <button class="tab pile" classList={{ active: tab.id === activeTabId() }} onClick={() => switchTab(tab.id)} style={`z-index:${10 - idx()}; margin-left:${idx() > 0 ? "-8px" : "0"}`}>
+            <button data-tab-id={tab.id} class="tab pile" classList={{ active: tab.id === activeTabId() }} onClick={() => switchTab(tab.id)} style={`z-index:${10 - idx()}; margin-left:${idx() > 0 ? "-8px" : "0"}`}>
               <Icon name="folder" size={13} weight={tab.id === activeTabId() ? "fill" : "regular"} /><span>{tab.title}</span>
               <Show when={tabs().length > 1}><span class="tab-close" role="button" onClick={(event) => { event.stopPropagation(); void closeTab(tab.id); }}><Icon name="close" size={12} /></span></Show>
             </button>
