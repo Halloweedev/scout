@@ -21,6 +21,12 @@ function isMacPlatform() {
 function isEditableTarget(target: EventTarget | null) {
   return target instanceof HTMLInputElement
     || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement
+    || (target instanceof HTMLElement && target.isContentEditable);
+}
+
+function appNeedsEditorShield(target: EventTarget | null) {
+  return target instanceof HTMLSelectElement
     || (target instanceof HTMLElement && target.isContentEditable);
 }
 
@@ -286,6 +292,12 @@ function handleKeyDown(event: KeyboardEvent) {
   handleTypeahead(event);
 }
 
+function shouldShieldAppEditorKey(event: KeyboardEvent) {
+  if (!event.isTrusted || !appNeedsEditorShield(event.target)) return false;
+  const modifier = event.metaKey || event.ctrlKey;
+  return !(modifier && event.key.toLocaleLowerCase() === "l");
+}
+
 function shouldShieldAppFileKey(event: KeyboardEvent) {
   if (!event.isTrusted || activeFileSurfaceOwnsFocus(event)) return false;
   if (isEditableTarget(event.target)) return false;
@@ -298,11 +310,10 @@ function shouldShieldAppFileKey(event: KeyboardEvent) {
 }
 
 function handleChromeKeyDown(event: KeyboardEvent) {
-  // App owns file-surface keyboard behavior at window bubble phase. Stop only
-  // trusted physical file keys that originated from chrome; target controls
-  // have already had their own key handlers, and default button activation is
-  // intentionally left intact because we do not call preventDefault().
-  if (shouldShieldAppFileKey(event)) event.stopPropagation();
+  // Match App's editor ownership for controls it does not natively recognize,
+  // then shield trusted physical file keys that originated from chrome. Do not
+  // preventDefault: target controls retain their native keyboard behavior.
+  if (shouldShieldAppEditorKey(event) || shouldShieldAppFileKey(event)) event.stopPropagation();
 }
 
 function handlePointerDown(event: PointerEvent) {
