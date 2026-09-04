@@ -94,9 +94,14 @@ function keyboardTarget(event: KeyboardEvent) {
     : document.activeElement instanceof Element ? document.activeElement : null;
 }
 
+function embeddedFileControl(target: Element) {
+  if (target.closest(".pane-file-row[data-entry-path]")) return false;
+  return !!target.closest("input, textarea, select, button, a[href], [contenteditable='true'], [role='button'], [role='separator'], [role='menuitem']");
+}
+
 function focusedFileArea(event: KeyboardEvent) {
   const target = keyboardTarget(event);
-  if (!target || target.closest("input, textarea, select, [contenteditable='true']")) return null;
+  if (!target || embeddedFileControl(target)) return null;
   const area = target.closest<HTMLElement>(".file-area");
   const pane = area?.closest<HTMLElement>(".explorer-pane");
   return area && pane?.classList.contains("active") ? area : null;
