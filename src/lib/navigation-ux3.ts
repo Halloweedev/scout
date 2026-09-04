@@ -1,5 +1,6 @@
 import { listDirectory } from "./fs";
 import { registerActions } from "./actions";
+import { requestOpenTab } from "./tab-commands";
 
 const CLOSED_TABS_KEY = "scout.closed-tabs.v1";
 const HISTORY_LIMIT = 80;
@@ -349,14 +350,7 @@ async function showSiblingMenu(separator: HTMLElement) {
 }
 
 function openPathInNewTab(path: string) {
-  const add = document.querySelector<HTMLButtonElement>(".new-tab-button");
-  if (!add) return;
-  add.click();
-  queueMicrotask(() => {
-    if (!samePath(activePanePath() ?? "", path)) {
-      window.dispatchEvent(new CustomEvent("scout:navigate", { detail: { path } }));
-    }
-  });
+  return requestOpenTab(path);
 }
 
 function recordClosedTab(tab: HTMLElement) {
