@@ -283,7 +283,7 @@ function shouldShieldAppFileKey(event: KeyboardEvent) {
   if (!event.isTrusted || activeFileSurfaceOwnsFocus(event)) return false;
   if (isEditableTarget(event.target)) return false;
 
-  if (event.key === "F2" || event.key === "Delete" || event.key === "Enter") return true;
+  if (event.key === "F2" || event.key === "Delete" || event.key === "Enter" || event.key === "Escape") return true;
   if (isMacPlatform() && event.metaKey && !event.ctrlKey && !event.altKey && event.key === "Backspace") return true;
   if (!event.metaKey && !event.ctrlKey && !event.altKey
     && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return true;
