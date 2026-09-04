@@ -64,8 +64,6 @@ function contextualActions(context: ScoutActionContext) {
   if (!context.selectedPaths.length) return [];
   return availableActions(context)
     .filter((action) => {
-      // Explicit context-menu actions are relevant to the current selection even
-      // when they live in Tabs/Navigation rather than the bar's fallback groups.
       if (action.contextMenu) return true;
       if (!CONTEXT_CATEGORIES.has(action.category)) return false;
       if (QUICK_SINGLE.includes(action.id) || QUICK_MULTI.includes(action.id)) return true;
@@ -108,22 +106,19 @@ function activeExplorerArea() {
   return document.querySelector<HTMLElement>(".explorer-pane.active .file-area");
 }
 
-function restoreAfterMenuAction(trigger: HTMLButtonElement | null) {
+function restoreAfterKeyboardAction(target: HTMLElement | null) {
   window.setTimeout(() => {
     const active = document.activeElement;
     if (active instanceof HTMLElement
       && active.isConnected
       && active !== document.body
       && active !== document.documentElement) return;
-    if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+    if (target?.isConnected) target.focus({ preventScroll: true });
     else activeExplorerArea()?.focus({ preventScroll: true });
   }, 0);
 }
 
-async function execute(action: ScoutAction, context: ScoutActionContext) {
-  const menuTrigger = menu && document.activeElement instanceof Node && menu.contains(document.activeElement)
-    ? bar?.querySelector<HTMLButtonElement>(".contextual-action-more") ?? null
-    : null;
+async function execute(action: ScoutAction, context: ScoutActionContext, returnFocus: HTMLElement | null = null) {
   closeMenu();
   try {
     await runAction(action.id, context);
@@ -131,7 +126,7 @@ async function execute(action: ScoutAction, context: ScoutActionContext) {
     dispatchActionError(error);
   } finally {
     queueSync();
-    if (menuTrigger) restoreAfterMenuAction(menuTrigger);
+    if (returnFocus) restoreAfterKeyboardAction(returnFocus);
   }
 }
 
@@ -155,7 +150,13 @@ function actionButton(action: ScoutAction, context: ScoutActionContext, compact 
   button.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    void execute(action, context);
+    const keyboardActivation = event.detail === 0;
+    const returnFocus = keyboardActivation
+      ? compact
+        ? button
+        : bar?.querySelector<HTMLButtonElement>(".contextual-action-more") ?? null
+      : null;
+    void execute(action, context, returnFocus);
   });
   return button;
 }
