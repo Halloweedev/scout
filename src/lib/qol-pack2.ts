@@ -16,6 +16,11 @@ function refreshCurrentFolder() {
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "F5", bubbles: true, cancelable: true }));
 }
 
+function comparablePath(path: string) {
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "") || "/";
+  return /^[A-Za-z]:/.test(normalized) ? normalized.toLocaleLowerCase() : normalized;
+}
+
 function visibleActiveRows() {
   return [...document.querySelectorAll<HTMLElement>(".explorer-pane.active .pane-file-row")]
     .filter((row) => row.offsetParent !== null && !!row.dataset.entryPath);
@@ -56,6 +61,14 @@ function otherPane() {
     .find((pane) => !pane.classList.contains("active")) ?? null;
 }
 
+function canOpenFolderInOtherPane(context: ScoutActionContext) {
+  const entry = context.selection[0];
+  const pane = otherPane();
+  if (context.selection.length !== 1 || entry?.kind !== "directory" || !pane) return false;
+  const otherPath = pane.dataset.panePath;
+  return !otherPath || comparablePath(otherPath) !== comparablePath(entry.path);
+}
+
 function focusPaneElement(pane: HTMLElement) {
   pane.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
 }
@@ -66,6 +79,9 @@ function openFolderInOtherPane(context: ScoutActionContext) {
   const destinationPane = otherPane();
   const originalPane = document.querySelector<HTMLElement>(".explorer-pane.active");
   if (!destinationPane || !originalPane) throw new Error("Add another pane first");
+  if (destinationPane.dataset.panePath && comparablePath(destinationPane.dataset.panePath) === comparablePath(target.path)) {
+    throw new Error("The other pane is already showing this folder");
+  }
 
   focusPaneElement(destinationPane);
   window.dispatchEvent(new CustomEvent("scout:navigate", { detail: { path: target.path } }));
@@ -153,9 +169,7 @@ export function installQolPack2() {
       keywords: ["split", "pane", "side by side", "folder"],
       contextMenu: true,
       contextMenuOrder: 6,
-      available: (context) => context.selection.length === 1
-        && context.selection[0].kind === "directory"
-        && document.querySelectorAll(".explorer-pane").length > 1,
+      available: canOpenFolderInOtherPane,
       run: (context) => openFolderInOtherPane(context),
     },
     {
