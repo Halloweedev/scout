@@ -10,6 +10,7 @@ let reconcileQueued = false;
 let restoreTimer: number | undefined;
 let restoreState: RestoreState = "pending";
 let restorePath: string | null = null;
+let restoreOriginPath: string | null = null;
 
 function comparablePath(path: string) {
   const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -48,6 +49,7 @@ function activePath() {
 function settle(path: string | null) {
   restoreState = "settled";
   restorePath = null;
+  restoreOriginPath = null;
   if (restoreTimer !== undefined) window.clearTimeout(restoreTimer);
   restoreTimer = undefined;
   if (path) writeLastLocation(path);
@@ -56,6 +58,7 @@ function settle(path: string | null) {
 async function beginRestore(currentPath: string, savedPath: string) {
   restoreState = "restoring";
   restorePath = savedPath;
+  restoreOriginPath = currentPath;
 
   try {
     // Validate through Scout's existing filesystem layer before asking App to
@@ -64,7 +67,7 @@ async function beginRestore(currentPath: string, savedPath: string) {
     await listDirectory(savedPath, false);
   } catch {
     clearLastLocation();
-    settle(currentPath);
+    settle(activePath() ?? currentPath);
     return;
   }
 
@@ -98,7 +101,16 @@ function reconcile() {
   }
 
   if (restoreState === "restoring") {
-    if (restorePath && comparablePath(path) === comparablePath(restorePath)) settle(path);
+    if (restorePath && comparablePath(path) === comparablePath(restorePath)) {
+      settle(path);
+      return;
+    }
+
+    // The user navigated away from Scout's temporary startup location while
+    // validation/restore was still in flight. User intent wins immediately.
+    if (restoreOriginPath && comparablePath(path) !== comparablePath(restoreOriginPath)) {
+      settle(path);
+    }
     return;
   }
 
@@ -120,6 +132,7 @@ function handlePageHide() {
 export function installSessionContinuity() {
   restoreState = "pending";
   restorePath = null;
+  restoreOriginPath = null;
   observer = new MutationObserver(queueReconcile);
   observer.observe(document.body, {
     childList: true,
@@ -138,6 +151,7 @@ export function installSessionContinuity() {
     restoreTimer = undefined;
     restoreState = "pending";
     restorePath = null;
+    restoreOriginPath = null;
     window.removeEventListener("pagehide", handlePageHide);
   };
 }
