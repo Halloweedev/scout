@@ -345,6 +345,7 @@ function handleKeyDown(event: KeyboardEvent) {
   if (!overlay) return;
   if (event.key === "Escape") {
     event.preventDefault();
+    event.stopImmediatePropagation();
     close();
   } else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
     scheduleSelectionRefresh();
