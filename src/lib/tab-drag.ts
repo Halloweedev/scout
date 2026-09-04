@@ -1,3 +1,5 @@
+import { requestNewTab, requestOpenTab } from "./tab-commands";
+
 const DRAG_THRESHOLD = 7;
 const CLOSED_TAB_LIMIT = 20;
 
@@ -45,13 +47,8 @@ function rememberClosedTab(tab: HTMLElement) {
 
 function reopenClosedTab() {
   const path = closedTabPaths.pop();
-  const button = tabStrip()?.querySelector<HTMLElement>(":scope > .new-tab-button");
-  if (!path || !button) return false;
-  button.click();
-  queueMicrotask(() => {
-    window.dispatchEvent(new CustomEvent("scout:navigate", { detail: { path } }));
-  });
-  return true;
+  if (!path) return false;
+  return requestOpenTab(path);
 }
 
 function syncOrderFromDom() {
@@ -190,10 +187,8 @@ function handleDoubleClick(event: MouseEvent) {
   const target = event.target instanceof Element ? event.target : null;
   const strip = target?.closest<HTMLElement>(".tab-strip");
   if (!strip || target?.closest(".tab, .new-tab-button")) return;
-  const button = strip.querySelector<HTMLElement>(":scope > .new-tab-button");
-  if (!button) return;
+  if (!requestNewTab()) return;
   event.preventDefault();
-  button.click();
 }
 
 function handleClickCapture(event: MouseEvent) {
