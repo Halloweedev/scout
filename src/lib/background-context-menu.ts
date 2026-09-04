@@ -1,4 +1,4 @@
-import { availableActions, runAction, type ScoutAction, type ScoutActionContext } from "./actions";
+import { actionContext, availableActions, runAction, type ScoutAction, type ScoutActionContext } from "./actions";
 import { installContextualActions } from "./contextual-actions";
 import { installStateRecovery } from "./state-recovery";
 
@@ -23,11 +23,10 @@ function contextFor(area: HTMLElement): ScoutActionContext | null {
   const panePath = pane?.dataset.panePath ?? null;
   if (!pane || !panePath) return null;
   return {
+    ...actionContext(),
     panePath,
     selection: [],
     selectedPaths: [],
-    tabCount: document.querySelectorAll(".tab-strip > .tab").length,
-    hasActiveTab: !!document.querySelector(".tab-strip > .tab.active"),
   };
 }
 
