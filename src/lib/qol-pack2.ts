@@ -38,12 +38,17 @@ function activeTabElements() {
   return [...document.querySelectorAll<HTMLElement>(".tab-strip .tab")];
 }
 
-function closeTabsOnSide(side: "left" | "right") {
+function tabsOnSide(side: "left" | "right") {
   const tabs = activeTabElements();
   const activeIndex = tabs.findIndex((tab) => tab.classList.contains("active"));
-  if (activeIndex < 0) throw new Error("No active tab");
-  const targets = side === "left" ? tabs.slice(0, activeIndex) : tabs.slice(activeIndex + 1).reverse();
-  for (const tab of targets) tab.querySelector<HTMLElement>(".tab-close")?.click();
+  if (activeIndex < 0) return [];
+  return side === "left" ? tabs.slice(0, activeIndex) : tabs.slice(activeIndex + 1);
+}
+
+function closeTabsOnSide(side: "left" | "right") {
+  const targets = tabsOnSide(side);
+  const ordered = side === "right" ? [...targets].reverse() : targets;
+  for (const tab of ordered) tab.querySelector<HTMLElement>(".tab-close")?.click();
 }
 
 function otherPane() {
@@ -122,7 +127,7 @@ export function installQolPack2() {
       title: "Invert Selection",
       category: "Selection",
       keywords: ["inverse", "toggle", "select everything else"],
-      available: (context) => !!context.panePath,
+      available: (context) => !!context.panePath && visibleActiveRows().length > 0,
       run: () => invertSelection(),
     },
     {
@@ -130,7 +135,7 @@ export function installQolPack2() {
       title: "Close Tabs to the Left",
       category: "Tabs",
       keywords: ["tabs", "cleanup", "left"],
-      available: (context) => context.tabCount > 1,
+      available: () => tabsOnSide("left").length > 0,
       run: () => closeTabsOnSide("left"),
     },
     {
@@ -138,7 +143,7 @@ export function installQolPack2() {
       title: "Close Tabs to the Right",
       category: "Tabs",
       keywords: ["tabs", "cleanup", "right"],
-      available: (context) => context.tabCount > 1,
+      available: () => tabsOnSide("right").length > 0,
       run: () => closeTabsOnSide("right"),
     },
     {
