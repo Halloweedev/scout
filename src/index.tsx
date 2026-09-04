@@ -65,6 +65,7 @@ import { installToolbarMenuKeyboard } from "./lib/toolbar-menu-keyboard";
 import { installUtilities } from "./lib/utilities";
 import { installUxInteractions } from "./lib/ux-interactions";
 import { installViewPreferences } from "./lib/view-preferences";
+import { installWindowContinuity } from "./lib/window-continuity";
 import "./styles.css";
 import "./native-drop.css";
 import "./internal-drag.css";
@@ -115,6 +116,7 @@ if (!root) {
   throw new Error("Scout root element was not found");
 }
 
+const windowContinuityCleanup = installWindowContinuity();
 const modalFocusCleanup = installModalFocusContract();
 const tooltipCleanup = installTooltips();
 const actionRegistryCleanup = installActionRegistry();
@@ -247,6 +249,7 @@ if (import.meta.hot) {
     actionRegistryCleanup();
     tooltipCleanup();
     modalFocusCleanup();
+    windowContinuityCleanup();
     void nativeDropCleanup.then((cleanup) => cleanup());
   });
 }
