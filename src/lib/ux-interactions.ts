@@ -24,6 +24,21 @@ function isEditableTarget(target: EventTarget | null) {
     || (target instanceof HTMLElement && target.isContentEditable);
 }
 
+function keyboardTarget(event: KeyboardEvent) {
+  return event.target instanceof Element
+    ? event.target
+    : document.activeElement instanceof Element ? document.activeElement : null;
+}
+
+function activeFileSurfaceOwnsFocus(event: KeyboardEvent) {
+  if (!event.isTrusted) return true;
+  const target = keyboardTarget(event);
+  if (!target) return false;
+  const pane = target.closest<HTMLElement>(".explorer-pane");
+  if (!pane?.classList.contains("active")) return false;
+  return !!target.closest(".file-area, .column-browser-list");
+}
+
 function activePane() {
   return document.querySelector<HTMLElement>(".explorer-pane.active");
 }
@@ -252,6 +267,7 @@ function syncAccessibility() {
 
 function handleKeyDown(event: KeyboardEvent) {
   if (isEditableTarget(event.target)) return;
+  if (!activeFileSurfaceOwnsFocus(event)) return;
   if (event.key === "Escape" && !document.querySelector(".quick-look-backdrop")) {
     lastSnapshot = null;
     markCursor(null);
@@ -261,6 +277,25 @@ function handleKeyDown(event: KeyboardEvent) {
   if (moveRangeSelection(event)) return;
   if (jumpSelection(event)) return;
   handleTypeahead(event);
+}
+
+function shouldShieldAppFileKey(event: KeyboardEvent) {
+  if (!event.isTrusted || event.defaultPrevented || activeFileSurfaceOwnsFocus(event)) return false;
+  if (isEditableTarget(event.target)) return false;
+
+  if (event.key === "F2" || event.key === "Delete" || event.key === "Enter") return true;
+  if (isMacPlatform() && event.metaKey && !event.ctrlKey && !event.altKey && event.key === "Backspace") return true;
+  if (!event.metaKey && !event.ctrlKey && !event.altKey
+    && ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return true;
+  return false;
+}
+
+function handleChromeKeyDown(event: KeyboardEvent) {
+  // App owns file-surface keyboard behavior at window bubble phase. Stop only
+  // trusted physical file keys that originated from chrome; target controls
+  // have already had their own key handlers, and default button activation is
+  // intentionally left intact because we do not call preventDefault().
+  if (shouldShieldAppFileKey(event)) event.stopPropagation();
 }
 
 function handlePointerDown(event: PointerEvent) {
@@ -285,6 +320,7 @@ function handleInteractionComplete() {
 
 export function installUxInteractions() {
   window.addEventListener("keydown", handleKeyDown, true);
+  document.addEventListener("keydown", handleChromeKeyDown);
   document.addEventListener("pointerdown", handlePointerDown, true);
   document.addEventListener("click", handleInteractionComplete);
   document.addEventListener("contextmenu", handleInteractionComplete);
@@ -299,6 +335,7 @@ export function installUxInteractions() {
   syncAccessibility();
   return () => {
     window.removeEventListener("keydown", handleKeyDown, true);
+    document.removeEventListener("keydown", handleChromeKeyDown);
     document.removeEventListener("pointerdown", handlePointerDown, true);
     document.removeEventListener("click", handleInteractionComplete);
     document.removeEventListener("contextmenu", handleInteractionComplete);
