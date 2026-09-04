@@ -7,9 +7,13 @@ const MENU_MARGIN = 8;
 const TYPEAHEAD_TIMEOUT = 700;
 const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
 
+function allMenuButtons(menu: HTMLElement) {
+  return [...menu.querySelectorAll<HTMLButtonElement>("button")];
+}
+
 function menuButtons(menu: HTMLElement) {
-  return [...menu.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")]
-    .filter((button) => button.offsetParent !== null);
+  return allMenuButtons(menu)
+    .filter((button) => !button.disabled && button.offsetParent !== null);
 }
 
 function setRovingFocus(menu: HTMLElement, target: HTMLButtonElement | null, focus = false) {
@@ -51,9 +55,9 @@ function enhanceMenu(menu: HTMLElement) {
   menu.setAttribute("aria-orientation", "vertical");
   normalizeNativeShortcutHints(menu);
 
-  const buttons = menuButtons(menu);
-  for (const button of buttons) button.setAttribute("role", "menuitem");
+  for (const button of allMenuButtons(menu)) button.setAttribute("role", "menuitem");
 
+  const buttons = menuButtons(menu);
   const focused = document.activeElement instanceof HTMLButtonElement && menu.contains(document.activeElement)
     ? document.activeElement
     : null;
@@ -84,24 +88,33 @@ function selectedContextRow() {
     ?? pane.querySelector<HTMLElement>(".pane-file-row.selected");
 }
 
-function ownsFileContextRequest(event: KeyboardEvent) {
-  const target = event.target instanceof Element
+function keyboardTarget(event: KeyboardEvent) {
+  return event.target instanceof Element
     ? event.target
     : document.activeElement instanceof Element ? document.activeElement : null;
-  if (!target || target.closest("input, textarea, select, [contenteditable='true']")) return false;
-  const area = target.closest<HTMLElement>(".file-area");
-  const pane = area?.closest<HTMLElement>(".explorer-pane");
-  return !!area && !!pane?.classList.contains("active");
 }
 
-function openKeyboardContextMenu(event: KeyboardEvent) {
-  const row = selectedContextRow();
-  if (!row) return false;
-  const rect = row.getBoundingClientRect();
-  const x = Math.min(window.innerWidth - MENU_MARGIN, Math.max(MENU_MARGIN, rect.left + Math.min(28, rect.width / 2)));
-  const y = Math.min(window.innerHeight - MENU_MARGIN, Math.max(MENU_MARGIN, rect.top + Math.min(24, rect.height / 2)));
+function focusedFileArea(event: KeyboardEvent) {
+  const target = keyboardTarget(event);
+  if (!target || target.closest("input, textarea, select, [contenteditable='true']")) return null;
+  const area = target.closest<HTMLElement>(".file-area");
+  const pane = area?.closest<HTMLElement>(".explorer-pane");
+  return area && pane?.classList.contains("active") ? area : null;
+}
 
-  row.dispatchEvent(new MouseEvent("contextmenu", {
+function ownsFileContextRequest(event: KeyboardEvent) {
+  return !!focusedFileArea(event);
+}
+
+function menuPoint(rect: DOMRect, offsetX: number, offsetY: number) {
+  return {
+    x: Math.min(window.innerWidth - MENU_MARGIN, Math.max(MENU_MARGIN, rect.left + Math.min(offsetX, Math.max(0, rect.width / 2)))),
+    y: Math.min(window.innerHeight - MENU_MARGIN, Math.max(MENU_MARGIN, rect.top + Math.min(offsetY, Math.max(0, rect.height / 2)))),
+  };
+}
+
+function dispatchContextMenu(target: HTMLElement, x: number, y: number) {
+  target.dispatchEvent(new MouseEvent("contextmenu", {
     bubbles: true,
     cancelable: true,
     button: 2,
@@ -109,7 +122,9 @@ function openKeyboardContextMenu(event: KeyboardEvent) {
     clientX: x,
     clientY: y,
   }));
+}
 
+function focusOpenedMenu() {
   window.setTimeout(() => {
     const menu = activeMenu();
     if (!menu) return;
@@ -117,9 +132,25 @@ function openKeyboardContextMenu(event: KeyboardEvent) {
     const first = menuButtons(menu)[0] ?? null;
     setRovingFocus(menu, first, true);
   }, 0);
+}
+
+function openKeyboardContextMenu(event: KeyboardEvent) {
+  const row = selectedContextRow();
+  if (row) {
+    const rect = row.getBoundingClientRect();
+    const point = menuPoint(rect, 28, 24);
+    dispatchContextMenu(row, point.x, point.y);
+  } else {
+    const area = focusedFileArea(event);
+    if (!area) return false;
+    const rect = area.getBoundingClientRect();
+    const point = menuPoint(rect, 36, 36);
+    dispatchContextMenu(area, point.x, point.y);
+  }
 
   event.preventDefault();
   event.stopPropagation();
+  focusOpenedMenu();
   return true;
 }
 
