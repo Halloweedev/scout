@@ -36,9 +36,20 @@ function fileUri(path: string) {
   return `file://${encodeURI(path)}`;
 }
 
+function comparablePath(path: string) {
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "") || "/";
+  return /^[A-Za-z]:/.test(normalized) ? normalized.toLocaleLowerCase() : normalized;
+}
+
 function activeRows() {
   return [...document.querySelectorAll<HTMLElement>(".explorer-pane.active .pane-file-row")]
     .filter((row) => row.offsetParent !== null && !!row.dataset.entryPath);
+}
+
+function hasVisibleKind(kind: "directory" | "file") {
+  return activeRows().some((row) => kind === "directory"
+    ? row.dataset.entryKind === "directory"
+    : row.dataset.entryKind !== "directory");
 }
 
 function clearSelection() {
@@ -89,6 +100,11 @@ function otherPanePath() {
   return next?.dataset.panePath ?? null;
 }
 
+function hasDistinctOtherPane(context: ScoutActionContext) {
+  const destination = otherPanePath();
+  return !!destination && !!context.panePath && comparablePath(destination) !== comparablePath(context.panePath);
+}
+
 function paneCycle(delta: number) {
   const visible = panes();
   if (visible.length < 2) throw new Error("Add another pane first");
@@ -101,6 +117,9 @@ async function transferToOtherPane(context: ScoutActionContext, mode: "copy" | "
   const destination = otherPanePath();
   if (!destination) throw new Error("Add another pane first");
   if (!context.selectedPaths.length) throw new Error("Select one or more items first");
+  if (mode === "move" && context.panePath && comparablePath(destination) === comparablePath(context.panePath)) {
+    throw new Error("The next pane is already showing this folder");
+  }
   if (mode === "copy") await copyEntries(context.selectedPaths, destination);
   else await moveEntries(context.selectedPaths, destination);
   toast(`${mode === "copy" ? "Copied" : "Moved"} ${context.selectedPaths.length} item${context.selectedPaths.length === 1 ? "" : "s"} to the next pane`);
@@ -188,7 +207,7 @@ export function installQolPack3() {
       keywords: ["move", "pane", "split", "other pane"],
       contextMenu: true,
       contextMenuOrder: 37,
-      available: (context) => context.selectedPaths.length > 0 && !!otherPanePath(),
+      available: (context) => context.selectedPaths.length > 0 && hasDistinctOtherPane(context),
       run: (context) => transferToOtherPane(context, "move"),
     },
     {
@@ -212,7 +231,7 @@ export function installQolPack3() {
       title: "Select All Folders",
       category: "Selection",
       keywords: ["directories", "folders only"],
-      available: (context) => !!context.panePath,
+      available: (context) => !!context.panePath && hasVisibleKind("directory"),
       run: () => selectRows((row) => row.dataset.entryKind === "directory", "folders"),
     },
     {
@@ -220,7 +239,7 @@ export function installQolPack3() {
       title: "Select All Files",
       category: "Selection",
       keywords: ["files only", "exclude folders"],
-      available: (context) => !!context.panePath,
+      available: (context) => !!context.panePath && hasVisibleKind("file"),
       run: () => selectRows((row) => row.dataset.entryKind !== "directory", "files"),
     },
     {
