@@ -21,19 +21,22 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Windows/Linux: Enter opens the selected item; F2 renames it.
 - macOS: Return renames the selected item, matching Finder. Cmd+Down opens it.
 - Middle-clicking a folder opens it in a new tab.
-- Escape cancels the current transient interaction and clears selection when no editor owns Escape.
+- Escape clears file selection only when the active explorer file surface owns the physical key and no editor, menu, preview, or other transient surface owns Escape first.
 
 ## Quick Look
 
-- Space opens or closes Quick Look for the current selection.
+- Space opens or closes Quick Look for the current selection when the active file surface owns physical keyboard focus.
+- Explicit Quick Look commands from the shared Actions Registry remain valid regardless of which non-editable Scout surface currently has physical focus.
 - Arrow navigation continues to change the selected item while Quick Look is open, and the preview follows the selection in all four directions where the current view supports spatial movement.
-- Escape closes Quick Look.
+- Escape closes Quick Look without clearing the underlying file selection.
+- Space pressed on interactive Quick Look media or other focused controls belongs to that control instead of dismissing the preview.
 
 ## Keyboard discovery
 
-- Typing a file-name prefix selects the next visible matching item.
+- Typing a file-name prefix selects the next visible matching item while the active file surface owns keyboard focus.
 - The type-ahead buffer resets after a short pause.
 - Keyboard navigation maintains a visible cursor inside a multi-selection without replacing the selection state.
+- Shift+Arrow range selection and Home/End file jumps are file-surface interactions; they do not act on stale selections while focus is in sidebar, tabs, toolbar, splitters, menus, or embedded explorer controls.
 - Ctrl+Tab and Ctrl+Shift+Tab cycle tabs in visual order.
 - macOS also supports Cmd+Shift+[ and Cmd+Shift+] for previous/next tab; Windows/Linux support Ctrl+PageUp and Ctrl+PageDown.
 - Scout preserves Cmd/Ctrl+1 through Cmd/Ctrl+4 for Icons, List, Columns, and Gallery view switching instead of overloading those shortcuts for numbered tabs.
@@ -45,9 +48,15 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Only one pane is active at a time.
 - Focused and unfocused selections remain visually distinct.
 - Active file surfaces expose listbox semantics and selected entries expose `aria-selected`.
+- Clicking a file row or non-interactive file-area background moves keyboard focus into that explorer surface so pointer selection can continue naturally with keyboard navigation.
+- Physical file commands such as Enter/Return, F2, Delete/Cmd+Backspace, file-navigation arrows, Home/End, and filename type-ahead only operate when the active explorer file surface owns the interaction.
+- Controls embedded inside a file area remain independent keyboard surfaces: List headers/resizers, recovery buttons, inputs, links, separators, and other controls must never inherit stale file-selection shortcuts merely because they are descendants of `.file-area`.
+- Sidebar, tabs, toolbar, splitters, menus, and other chrome own their physical key events; handled or unhandled chrome keys must not fall through into App-level file-selection behavior.
+- Synthetic key events deliberately emitted by shared Actions Registry commands are explicit commands and remain distinct from trusted physical-key focus ownership.
 - Keyboard interactions must not hijack text inputs, rename fields, search, or editable content.
-- Context menus expose menu/menuitem semantics and support Shift+F10 or the platform Context Menu key from the current selection.
+- Context menus expose menu/menuitem semantics and support Shift+F10 or the platform Context Menu key from the current selection only when the active file surface owns focus.
 - Context-menu keyboard navigation uses Arrow Up/Down, Home/End, Tab/Shift+Tab cycling, Enter/Space activation, Escape dismissal, and printable-character type-ahead.
+- Escape dismissing a context menu restores explorer focus without clearing the selected files.
 - The tab strip exposes tablist/tab semantics with a single roving tab stop; Arrow Left/Right and Home/End activate tabs when focus is inside the strip.
 
 ## Navigation chrome
@@ -60,6 +69,7 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Sidebar content scrolls vertically when locations, bookmarks, or workspaces exceed the available height.
 - The sidebar width is directly resizable, persisted, keyboard-adjustable through its separator, and resettable to the default width.
 - Multi-pane layouts expose persisted draggable splitters with keyboard-adjustable separators and a 50/50 reset.
+- Escape and other file-selection keys used while navigation chrome owns focus remain local to that chrome and do not mutate a stale file selection.
 
 ## Sidebar organization
 
@@ -69,19 +79,21 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - When focus is inside the sidebar, Arrow Up/Down moves through visible section headings and primary destinations; Home/End jump to the first or last visible control.
 - Printable-character type-ahead in the sidebar moves focus to the next visible matching section or destination and wraps through the current sidebar contents.
 - Hidden/collapsed sidebar content is excluded from keyboard traversal and type-ahead.
+- Sidebar Enter/Space activates the focused sidebar control directly instead of falling through to the active explorer selection.
 - Bookmarks and Workspaces can be reordered directly with a pointer drag; insertion feedback shows the resulting position and edge-hovering scrolls long sidebars.
 - Bookmark and Workspace order persists by stable item ID across launches, additions, removals, and collapsed-section startup states.
 - Alt+Arrow Up/Down reorders the focused Bookmark or Workspace while ordinary unmodified Arrow Up/Down remains reserved for sidebar focus traversal.
 - On Windows/Linux, the normal Alt+Up parent-folder alias yields only while focus is inside one of those reorderable rows.
 - A reorder does not commit when the gesture is cancelled, released back over the source without a destination, or produces no actual order change.
 - A completed reorder suppresses the incidental click that would otherwise open the dragged Bookmark or Workspace on pointer release.
-- F2 on a focused Bookmark or Workspace opens a compact inline label editor without changing the folder path or saved pane layout.
+- F2 on a focused Bookmark or Workspace primary row opens a compact inline label editor without changing the folder path or saved pane layout; F2 elsewhere in sidebar chrome does not rename a stale file selection.
 - Enter or blur commits a custom label; Escape cancels the current edit and restores the prior visible label.
 - Empty/custom labels equal to the underlying default fall back to the authoritative Bookmark or Workspace name instead of storing redundant aliases.
 - Custom sidebar labels are presentation aliases stored by stable item ID; the existing Bookmark and Workspace records remain authoritative for paths, pane layouts, creation, and deletion.
 - Aliases survive relaunch and ordinary additions/removals, and stale aliases are discarded when their stable item no longer exists.
 - Plain Delete removes a focused Bookmark or Workspace through its existing sidebar remove control; macOS also accepts plain Backspace for the same focused sidebar operation.
-- File-destructive delete variants are consumed while a Bookmark or Workspace row owns focus so a stale active-pane file selection cannot be trashed from the wrong interaction surface.
+- Removing a Bookmark or Workspace from the keyboard keeps focus at the nearest surviving sidebar control rather than dropping focus into the document.
+- File-destructive Delete/Cmd+Backspace variants are consumed throughout sidebar chrome so a stale active-pane file selection cannot be trashed from the wrong interaction surface.
 - Sidebar visibility is persistent and available through the shared `Toggle Sidebar` action.
 - macOS uses Control+Cmd+S for Toggle Sidebar; Windows/Linux use Ctrl+Shift+B.
 - Hiding the sidebar moves focus back into the active explorer when focus was inside the sidebar, and showing it preserves the previously configured width and disclosure state.
@@ -112,7 +124,9 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Each List column can be resized directly by dragging its header separator, within sensible minimum and maximum widths.
 - Column widths persist across launches and are shared across panes so side-by-side List views remain aligned.
 - A focused column separator supports Arrow Left/Right resizing, with Shift for larger steps; Enter or double-click resets the saved List widths.
+- Escape leaves a focused List-column resizer without clearing the current file selection.
 - Name, Modified, and Size headers remain sortable by pointer and are also keyboard-operable with Enter or Space.
+- List headers and resizers are embedded controls, not file-selection surfaces; file Rename/Delete/navigation shortcuts do not leak through them.
 - Resizing List columns may make the file area horizontally scrollable rather than silently compressing metadata until it becomes unreadable.
 
 ## Menus and transient surfaces
@@ -124,6 +138,7 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Empty-space menus use the shared Actions Registry: compatible folder-level tools are enriched from the same registry rather than being duplicated in a second menu implementation.
 - Opening a folder-background menu activates that pane and clears stale item selection before folder-level actions are resolved.
 - Current-folder Search uses Escape progressively: the first Escape clears a non-empty filter and the next Escape exits the field.
+- A transient menu/preview/editor owns its dismissal key before the underlying explorer; closing transient UI must not also clear or mutate the file selection unless the interaction explicitly performs a file action.
 - A non-empty file selection exposes a compact contextual action bar resolved from the same Actions Registry used by context menus, Inspector, and the Command Palette.
 - The contextual bar prioritizes up to five high-frequency actions appropriate to single or multi-selection; dangerous actions are not promoted as generic fallback quick actions.
 - `More` contains only the available actions not already promoted into the quick set, grouped by registry category with shortcut hints where available.
@@ -138,6 +153,7 @@ This document defines Scout's baseline file-manager behavior. New views and tool
 - Active-pane load failures keep the original error visible and add Retry through `navigation.refresh` plus Go to Parent through `navigation.parent` only when a parent location is actually available.
 - Loading feedback appears only after a short delay so normal fast local navigation does not flash additional status copy.
 - Recovery UI is generated only for the active pane and must preserve the source empty/error accessibility state so cleanup can restore it exactly.
+- Recovery buttons remain their own keyboard controls even though they are rendered inside the file area; physical file-selection shortcuts must not leak through them.
 - Recovery-generated DOM mutations must not cause a self-sustaining observer loop; registry actions remain the source of behavior rather than recovery-specific filesystem/navigation implementations.
 - HMR disposal removes generated recovery surfaces, restores source states, disconnects observers/listeners, and cancels pending delayed loading feedback.
 
@@ -212,3 +228,7 @@ UX & Interaction 6.0 adds bounded in-session folder/view navigation memory so re
 UX & Interaction 7.0 adds a compact selection-aware action surface that exposes the existing Actions Registry at the moment of selection, with overflow and Command Palette escalation instead of duplicated command implementations.
 
 UX & Interaction 8.0 adds actionable empty, no-match, loading, and failure states that reuse Scout's existing registry actions and preserve filesystem/navigation authority rather than implementing parallel recovery workflows.
+
+UX & Interaction 9.0 establishes truthful action availability: shared registry commands only surface when their real shell control, selection, clipboard, tab, or pane state can materially perform the advertised action.
+
+Focus ownership is a cross-version interaction invariant: trusted physical file keys belong to the active explorer surface, while chrome/transient controls own their own keys and explicit registry commands remain independently invokable.
